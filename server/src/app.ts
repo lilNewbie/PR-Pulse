@@ -1,5 +1,6 @@
 import express from 'express'
 import cookieParser from 'cookie-parser'
+import authRouter from './modules/auth/router'
 
 const app = express()
 
@@ -13,7 +14,8 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' })
 })
 
-// TODO (Alan, days 2-3): mount auth router at /auth
+app.use(authRouter)
+
 // TODO (Alan, days 3-4): mount queue router at /api/queue
 // TODO (Kaushik): mount repos router at /api/repos
 // TODO (Mandaar): mount my-prs router at /api/my-prs

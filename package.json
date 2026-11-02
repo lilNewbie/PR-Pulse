@@ -2,14 +2,18 @@
   "name": "pr-pulse",
   "version": "0.0.1",
   "private": true,
-  "workspaces": ["shared", "server", "client"],
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w server && npm run build -w client",
     "lint": "eslint .",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test": "vitest run",
-    "migrate": "node --import tsx ./node_modules/.bin/node-pg-migrate up -m migrations",
+    "migrate": "node --import tsx node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m migrations",
     "seed": "tsx server/seed/index.ts"
   },
   "devDependencies": {
@@ -18,9 +22,10 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "concurrently": "^9.0.0",
+    "dotenv": "^18.0.9",
     "eslint": "^9.11.0",
-    "node-pg-migrate": "^7.7.0",
     "nock": "^14.0.0",
+    "node-pg-migrate": "^7.7.0",
     "supertest": "^7.0.0",
     "ts-node": "^10.9.0",
     "tsx": "^4.19.0",
