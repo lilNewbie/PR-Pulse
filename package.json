@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test": "vitest run",
-    "migrate": "node-pg-migrate up -m migrations",
+    "migrate": "node --import tsx ./node_modules/node-pg-migrate/dist/cli.js up -m migrations",
     "seed": "tsx server/seed/index.ts"
   },
   "devDependencies": {
