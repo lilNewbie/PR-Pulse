@@ -18,6 +18,7 @@ export default defineConfig({
       SESSION_SECRET: process.env.SESSION_SECRET ?? 'test-session-secret-for-testing!!',
       GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID ?? 'test-client-id',
       GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET ?? 'test-client-secret',
+      APP_URL: '',
       NODE_ENV: 'test',
     },
   },
