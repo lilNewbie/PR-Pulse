@@ -81,7 +81,7 @@ describe('US-01 Sign in with GitHub', () => {
     expect(callbackRes.status).toBe(302)
     expect(callbackRes.headers['location']).toBe('/my-prs')
 
-    const cookies = callbackRes.headers['set-cookie'] as string[]
+    const cookies = callbackRes.headers['set-cookie'] as unknown as string[]
     expect(cookies?.some((c: string) => c.startsWith('session='))).toBe(true)
 
     const { rows } = await pool.query('SELECT login FROM users WHERE github_id = $1', [12345])
