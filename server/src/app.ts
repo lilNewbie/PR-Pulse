@@ -1,7 +1,9 @@
+
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import path from 'path'
 import authRouter from './modules/auth/router'
+import prsRouter from './modules/prs/router'
 
 const app = express()
 
@@ -20,7 +22,9 @@ app.use(authRouter)
 // TODO (Alan, days 3-4): mount queue router at /api/queue
 // TODO (Kaushik): mount repos router at /api/repos
 // TODO (Mandaar): mount my-prs router at /api/my-prs
-// TODO (Mallikarjun): mount prs router at /api/my-prs/:id
+
+// Mallikarjun: individual PR detail endpoint
+app.use(prsRouter)
 
 const clientDist = path.join(process.cwd(), 'client', 'dist')
 app.use(express.static(clientDist))
