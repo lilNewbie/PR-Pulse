@@ -22,10 +22,10 @@ Fill in `.env`:
 | Variable | Value |
 | --- | --- |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | The local OAuth app, from the password manager |
-| `TOKEN_KEY`, `SESSION_SECRET` | Run `openssl rand -hex 16` once for each |
+| `TOKEN_KEY`, `SESSION_SECRET` | Run `openssl rand -base64 32` once for each |
 | `WEBHOOK_URL` | Your own channel from https://smee.io/new |
 
-`TOKEN_KEY` must be exactly 32 characters. A value from `openssl rand -base64 32` is too long.
+`TOKEN_KEY` must be base64 and decode to exactly 32 bytes.
 
 Start the database and the app:
 
@@ -58,7 +58,7 @@ Staging deploys from `main` using `render.yaml`:
 | Variable | Value |
 | --- | --- |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | The staging OAuth app, from the password manager |
-| `TOKEN_KEY` | Output of `openssl rand -hex 16`, the same on the API service and the cron job |
+| `TOKEN_KEY` | Output of `openssl rand -base64 32`, the same on the API service and the cron job |
 | `APP_URL`, `PUBLIC_URL` | `https://pr-pulse-staging.onrender.com` |
 | `WEBHOOK_URL` | `https://pr-pulse-staging-api.onrender.com/webhooks/github` |
 
