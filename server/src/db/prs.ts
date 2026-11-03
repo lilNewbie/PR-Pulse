@@ -3,16 +3,13 @@ import pool from './pool'
 import type { PrRow, QueueRow } from './types'
 
 /**
- * Returns open pull requests assigned to the user for review.
- *
- * Security:
- * - User must have repository access.
- * - Review request must match the user's GitHub ID.
+ * Returns open, non-draft PRs assigned to the user
+ * for review in repositories they can access.
  *
  * Ordering:
- * - Oldest review requests first.
- * - Fewest lines changed first for equal timestamps.
- * - PR ID as a deterministic final tie-breaker.
+ * 1. Oldest review request first
+ * 2. Fewest lines changed first
+ * 3. PR ID for deterministic ties
  */
 export async function listQueueRows(
   userId: number,
@@ -53,8 +50,12 @@ export async function listQueueRows(
 }
 
 /**
- * Returns PRs authored by the current GitHub user,
- * restricted to repositories they can access.
+ * Returns only open PRs authored by the current user.
+ *
+ * Draft PRs are included.
+ * Closed and merged PRs are excluded.
+ *
+ * Repository access is enforced.
  */
 export async function listMyPrs(
   userId: number,
@@ -70,6 +71,7 @@ export async function listMyPrs(
     JOIN users u
       ON u.github_id = p.author_github_id
     WHERE u.id = $1
+      AND p.state = 'open'
       AND EXISTS (
         SELECT 1
         FROM repo_access ra
@@ -87,35 +89,58 @@ export async function listMyPrs(
 }
 
 /**
- * Returns one PR only if the requesting user
- * has access to its repository.
+ * Fetches a PR and enforces repository access.
  *
- * Returns null when the PR does not exist
- * or is inaccessible.
+ * Returns:
+ * - PrRow       : PR exists and user has access
+ * - 'forbidden' : PR exists but user lacks access
+ * - 'not_found' : PR does not exist
+ *
+ * The API route can map these results to:
+ * - 200 OK
+ * - 403 Forbidden
+ * - 404 Not Found
  */
 export async function getPrForUser(
   userId: number,
   prId: number,
-): Promise<PrRow | null> {
-  const { rows } = await pool.query<PrRow>(
+): Promise<PrRow | 'forbidden' | 'not_found'> {
+  const { rows } = await pool.query<
+    PrRow & { has_access: boolean }
+  >(
     `
     SELECT
       p.*,
-      r.owner || '/' || r.name AS repo_full_name
-    FROM pull_requests p
-    JOIN repos r
-      ON r.id = p.repo_id
-    WHERE p.id = $2
-      AND EXISTS (
+      r.owner || '/' || r.name AS repo_full_name,
+      EXISTS (
         SELECT 1
         FROM repo_access ra
         WHERE ra.user_id = $1
           AND ra.repo_id = p.repo_id
-      )
+      ) AS has_access
+    FROM pull_requests p
+    JOIN repos r
+      ON r.id = p.repo_id
+    WHERE p.id = $2
     LIMIT 1
     `,
     [userId, prId],
   )
 
-  return rows[0] ?? null
+  const pr = rows[0]
+
+  if (!pr) {
+    return 'not_found'
+  }
+
+  if (!pr.has_access) {
+    return 'forbidden'
+  }
+
+  // Exclude the internal access-check field
+  // from the returned PR data.
+  const { has_access: _hasAccess, ...prRow } = pr
+  void _hasAccess
+
+  return prRow
 }
