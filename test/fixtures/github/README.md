@@ -46,6 +46,29 @@ Every file goes through `tools/sanitize.ts`. It does three things:
 
 ## Recording (day 1)
 
+### Quick way: one command
+
+Put two tokens in `.env`, which git ignores:
+- `GITHUB_TOKEN`: your account, admin on the test repo, scopes `repo` and `admin:repo_hook`.
+- `REVIEWER_TOKEN`: a teammate with access to the repo.
+
+Then run:
+
+```sh
+bash test/fixtures/github/tools/record-all.sh
+```
+
+It does the following:
+1. Opens a fresh smee channel and starts the recorder.
+2. Adds a temporary webhook to the repo.
+3. Runs every step in the table below through the API (`tools/trigger-events.ts`), including the API recording before the merge.
+4. Deletes its branches and the webhook.
+5. Runs the guard test.
+
+Afterwards, review the diff and commit.
+
+### Manual way
+
 You need:
 - Admin on the test repo (`pr-pulse-test/sandbox`) to add a webhook.
 - A teammate to review, because GitHub doesn't let you review your own PR.
