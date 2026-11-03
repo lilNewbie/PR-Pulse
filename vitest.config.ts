@@ -14,7 +14,7 @@ export default defineConfig({
     env: {
       DATABASE_URL:
         process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/pr_pulse',
-      TOKEN_KEY: process.env.TOKEN_KEY ?? '01234567890123456789012345678901',
+      TOKEN_KEY: process.env.TOKEN_KEY ?? 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
       SESSION_SECRET: process.env.SESSION_SECRET ?? 'test-session-secret-for-testing!!',
       GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID ?? 'test-client-id',
       GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET ?? 'test-client-secret',

@@ -111,6 +111,18 @@ describe('US-01 Sign in with GitHub', () => {
     expect(meRes.body.login).toBe('testuser')
   })
 
+  it('US-01: re-login does not downgrade an existing lead to reviewer', async () => {
+    const agent = await loginViaOAuth()
+    const me1 = await agent.get('/api/me')
+    expect(me1.body.role).toBe('lead')
+
+    // Same GitHub user logs in again — team now has 1 member, bootstrap would pick 'reviewer',
+    // but upsertMember must DO NOTHING on conflict so the lead role is preserved
+    const agent2 = await loginViaOAuth()
+    const me2 = await agent2.get('/api/me')
+    expect(me2.body.role).toBe('lead')
+  })
+
   it('US-01 AC4: no session — /api/me returns 401', async () => {
     const res = await request(app).get('/api/me')
     expect(res.status).toBe(401)
