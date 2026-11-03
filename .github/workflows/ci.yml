@@ -28,8 +28,8 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/pr_pulse_test
       PORT: 3001
-      SESSION_SECRET: ci-session-secret-for-testing-only
-      TOKEN_KEY: 01234567890123456789012345678901
+      SESSION_SECRET: "ci-session-secret-for-testing-only"
+      TOKEN_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
     steps:
       - uses: actions/checkout@v4
