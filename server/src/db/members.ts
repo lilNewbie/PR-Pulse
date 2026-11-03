@@ -35,7 +35,7 @@ export async function upsertMember(teamId: number, userId: number, role: Role): 
   await pool.query(
     `INSERT INTO members (team_id, user_id, role)
      VALUES ($1, $2, $3)
-     ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+     ON CONFLICT (team_id, user_id) DO NOTHING`,
     [teamId, userId, role],
   )
 }

@@ -1,9 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "outDir": "dist",
+    "rootDir": "..",
     "rootDirs": ["src", "../shared"],
     "paths": {
       "shared": ["../shared/types"]

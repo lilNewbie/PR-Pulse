@@ -7,8 +7,8 @@ const TAG_LEN = 16
 function getKey(): Buffer {
   const key = process.env.TOKEN_KEY
   if (!key) throw new Error('TOKEN_KEY environment variable is not set')
-  const buf = Buffer.from(key, 'utf8')
-  if (buf.length !== 32) throw new Error('TOKEN_KEY must be exactly 32 bytes')
+  const buf = Buffer.from(key, 'base64')
+  if (buf.length !== 32) throw new Error('TOKEN_KEY must be base64-encoded 32 bytes (generate with: openssl rand -base64 32)')
   return buf
 }
 
