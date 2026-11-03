@@ -1,3 +1,4 @@
+
 import pool from '../src/db/pool'
 import { encrypt } from '../src/lib/crypto'
 
@@ -15,16 +16,8 @@ const DEMO_REPOS = [
   { githubRepoId: 800002, name: 'api' },
 ] as const
 
-function hoursAgo(hours: number): Date {
-  return new Date(Date.now() - hours * 60 * 60 * 1000)
-}
-
 export async function seedDevelopmentData(): Promise<void> {
   console.log('Starting PR Pulse development seed...')
-
-  // ========================================
-  // SAFETY CHECK
-  // ========================================
 
   const databaseUrl = process.env.DATABASE_URL
 
@@ -45,6 +38,13 @@ export async function seedDevelopmentData(): Promise<void> {
     )
   }
 
+  // Use the same reference time for every seeded PR.
+  const seedNow = Date.now()
+
+  function hoursAgo(hours: number): Date {
+    return new Date(seedNow - hours * 60 * 60 * 1000)
+  }
+
   const client = await pool.connect()
 
   try {
@@ -53,9 +53,6 @@ export async function seedDevelopmentData(): Promise<void> {
     // ========================================
     // STEP 0: CLEAR PREVIOUS DEMO DATA
     // ========================================
-
-    // Delete demo PRs and their dependent records first.
-    // This avoids relying on cascading foreign keys.
 
     await client.query(
       `DELETE FROM reviews
@@ -237,9 +234,10 @@ export async function seedDevelopmentData(): Promise<void> {
           webhook_secret_enc,
           status,
           sync_status,
-          last_synced_at
+          last_synced_at,
+          connected_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
         RETURNING id`,
         [
           teamId,
@@ -249,6 +247,7 @@ export async function seedDevelopmentData(): Promise<void> {
           encrypt('seed'),
           'connected',
           'ok',
+          userIds.demo_lead,
         ]
       )
 
@@ -438,7 +437,8 @@ export async function seedDevelopmentData(): Promise<void> {
       {
         number: 11,
         title: 'Update dependencies',
-        repo: 'api',
+        // Accessible to demo_author for the "Behind main" badge.
+        repo: 'sandbox',
         authorGithubId: 900004,
         state: 'open',
         isDraft: false,
@@ -539,10 +539,6 @@ export async function seedDevelopmentData(): Promise<void> {
     }
 
     console.log(`Created ${demoPrs.length} demo pull requests`)
-
-    // ========================================
-    // STEP 6: COMMIT
-    // ========================================
 
     await client.query('COMMIT')
 
