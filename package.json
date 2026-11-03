@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w server && npm run build -w client",
+    "prestart": "npm run migrate",
+    "start": "node server/dist/server/src/index.js",
     "lint": "eslint .",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test": "vitest run",
