@@ -57,6 +57,7 @@ describe('GET /api/my-prs/:id', () => {
     await createUser(1001, 'test_author')
     const reviewerId = await createUser(1002, 'test_reviewer')
     const outsiderId = await createUser(1003, 'test_outsider')
+    await createUser(1004, 'second_reviewer')
 
     authorizedSession = await createSession(reviewerId, teamId)
     unauthorizedSession = await createSession(outsiderId, teamId)
@@ -103,13 +104,15 @@ describe('GET /api/my-prs/:id', () => {
       [prId],
     )
 
-    // Approval must remain effective after a later comment.
+    // The first reviewer approves and later comments.
+    // The second reviewer independently requests changes.
     await pool.query(
       `INSERT INTO reviews
         (pr_id, reviewer_github_id, state, submitted_at)
        VALUES
         ($1, 1002, 'approved', '2026-11-01T11:00:00Z'),
-        ($1, 1002, 'commented', '2026-11-02T11:00:00Z')`,
+        ($1, 1002, 'commented', '2026-11-02T11:00:00Z'),
+        ($1, 1004, 'changes_requested', '2026-11-02T12:00:00Z')`,
       [prId],
     )
   })
@@ -145,7 +148,7 @@ describe('GET /api/my-prs/:id', () => {
     expect(res.body).not.toHaveProperty('is_draft')
   })
 
-  it('returns review requests and preserves approval after a comment', async () => {
+  it('shows approved and changes-requested reviewers separately, preserving approval after a comment', async () => {
     const res = await request(app)
       .get(`/api/my-prs/${prId}`)
       .set('Cookie', `session=${authorizedSession}`)
@@ -159,13 +162,22 @@ describe('GET /api/my-prs/:id', () => {
       },
     ])
 
-    expect(res.body.reviews).toEqual([
-      {
-        reviewerLogin: 'test_reviewer',
-        state: 'approved',
-        submittedAt: '2026-11-01T11:00:00.000Z',
-      },
-    ])
+    expect(res.body.reviews).toEqual(
+      expect.arrayContaining([
+        {
+          reviewerLogin: 'test_reviewer',
+          state: 'approved',
+          submittedAt: '2026-11-01T11:00:00.000Z',
+        },
+        {
+          reviewerLogin: 'second_reviewer',
+          state: 'changes_requested',
+          submittedAt: '2026-11-02T12:00:00.000Z',
+        },
+      ]),
+    )
+
+    expect(res.body.reviews).toHaveLength(2)
   })
 
   it('returns 400 for an invalid PR ID', async () => {
