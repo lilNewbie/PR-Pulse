@@ -4,11 +4,12 @@ import path from 'path'
 import authRouter from './modules/auth/router'
 import queueRouter from './modules/queue/router'
 import teamRepoRouter from './modules/team-repo/router'
+import webhookRouter from './webhook/router'
 
 const app = express()
 
 // Webhook route MUST be mounted before express.json() so it can read the raw body
-// TODO (Mandaar): app.use('/webhooks', webhookRouter)
+app.use('/webhooks', webhookRouter)
 
 app.use(express.json())
 app.use(cookieParser())
