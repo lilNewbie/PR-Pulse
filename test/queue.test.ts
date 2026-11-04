@@ -11,7 +11,12 @@ vi.mock('../server/src/db/prs', () => ({
   listQueueRows: vi.fn(),
 }))
 
+vi.mock('../server/src/db/repos', () => ({
+  listAccessibleRepoSyncStatus: vi.fn(),
+}))
+
 import * as prsDb from '../server/src/db/prs'
+import * as reposDb from '../server/src/db/repos'
 
 const NOW = new Date('2026-01-01T12:00:00Z')
 const ME = { id: 1, githubId: 11111, login: 'alan', role: 'reviewer' as Role }
@@ -132,6 +137,7 @@ describe('US-07 GET /api/queue', () => {
   beforeEach(async () => {
     await cleanTables()
     vi.mocked(prsDb.listQueueRows).mockResolvedValue([])
+    vi.mocked(reposDb.listAccessibleRepoSyncStatus).mockResolvedValue([])
   })
 
   it('US-07: 401 without session', async () => {
@@ -156,14 +162,16 @@ describe('US-07 GET /api/queue', () => {
     expect(res.body.lastSyncedAt).toBeNull()
   })
 
-  it('US-07 AC7: syncWarning:true and lastSyncedAt set when sync_status != ok', async () => {
+  it('US-07 AC7: syncWarning:true even on empty queue when a repo sync has failed', async () => {
     const { sessionId } = await createUserWithSession()
     const syncedAt = new Date('2026-01-01T10:00:00Z')
-    vi.mocked(prsDb.listQueueRows).mockResolvedValue([
-      makeRow({ id: 1, sync_status: 'rate_limited', last_synced_at: syncedAt }),
+    // queue is empty, but a repo has a sync problem
+    vi.mocked(reposDb.listAccessibleRepoSyncStatus).mockResolvedValue([
+      { sync_status: 'rate_limited', last_synced_at: syncedAt },
     ])
     const res = await request(app).get('/api/queue').set('Cookie', `session=${sessionId}`)
     expect(res.status).toBe(200)
+    expect(res.body.items).toEqual([])
     expect(res.body.syncWarning).toBe(true)
     expect(res.body.lastSyncedAt).toBe(syncedAt.toISOString())
   })

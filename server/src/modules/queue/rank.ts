@@ -5,7 +5,7 @@ import { computeFlags } from '../../flags/index'
 
 export function rankQueue(rows: QueueRow[], me: SessionUser, now: Date): QueueItem[] {
   return rows
-    .filter((r) => r.state === 'open' && !r.is_draft && r.author_github_id !== me.githubId)
+    .filter((r) => r.state === 'open' && !r.is_draft && Number(r.author_github_id) !== me.githubId)
     .sort((a, b) => {
       // Descending wait time (ascending requested_at)
       const reqDiff = a.requested_at.getTime() - b.requested_at.getTime()
@@ -14,7 +14,7 @@ export function rankQueue(rows: QueueRow[], me: SessionUser, now: Date): QueueIt
       return a.lines_changed - b.lines_changed
     })
     .map((r, i) => ({
-      id: r.id,
+      id: Number(r.id),
       repo: r.repo_full_name,
       number: r.number,
       title: r.title,

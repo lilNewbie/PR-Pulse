@@ -2,6 +2,7 @@ import { Router } from 'express'
 import type { QueueResponse } from 'shared'
 import { requireRole } from '../../middleware/requireRole'
 import { listQueueRows } from '../../db/prs'
+import { listAccessibleRepoSyncStatus } from '../../db/repos'
 import { rankQueue } from './rank'
 
 const router = Router()
@@ -14,11 +15,14 @@ async function handleQueue(
   req: Parameters<Router>[0],
   res: Parameters<Router>[1],
 ): Promise<void> {
-  const rows = await listQueueRows(req.user!.id)
+  const [rows, repoRows] = await Promise.all([
+    listQueueRows(req.user!.id),
+    listAccessibleRepoSyncStatus(req.user!.id),
+  ])
   const items = rankQueue(rows, req.user!, new Date())
 
-  const syncWarning = rows.some((r) => r.sync_status !== 'ok')
-  const lastSyncedAt = rows.reduce<Date | null>((min, r) => {
+  const syncWarning = repoRows.some((r) => r.sync_status !== 'ok')
+  const lastSyncedAt = repoRows.reduce<Date | null>((min, r) => {
     if (!r.last_synced_at) return min
     if (!min || r.last_synced_at < min) return r.last_synced_at
     return min
