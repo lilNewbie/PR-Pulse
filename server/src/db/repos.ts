@@ -99,3 +99,10 @@ export async function insertConnectingRepo(repo: NewRepo): Promise<number> {
     client.release()
   }
 }
+
+export async function listConnectedRepoIds(): Promise<number[]> {
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM repos WHERE status = 'connected' ORDER BY id`,
+  )
+  return rows.map((row) => Number(row.id))
+}
