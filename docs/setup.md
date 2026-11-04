@@ -53,14 +53,14 @@ Staging deploys from `main` as a single combined service (Express API + React st
 
 1. In Render, choose **New > Blueprint** and select this repo.
 2. Enter the values Render asks for, using the table below.
-3. After the deploy, check that `https://pr-pulse-staging.onrender.com/health` returns 200.
+3. After the deploy, check that `https://pr-pulse-443w.onrender.com/health` returns 200.
 
 | Variable | Value |
 | --- | --- |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | The staging OAuth app, from the password manager |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | The staging OAuth app (owned by Alan), from the password manager |
 | `TOKEN_KEY` | Output of `openssl rand -base64 32`, the same value on the web service and the cron job |
-| `APP_URL` | `https://pr-pulse-staging.onrender.com` |
-| `WEBHOOK_URL` | `https://pr-pulse-staging.onrender.com/webhooks/github` |
+| `APP_URL` | `https://pr-pulse-443w.onrender.com` |
+| `WEBHOOK_URL` | `https://pr-pulse-443w.onrender.com/webhooks/github` |
 
 If Render assigns a different URL, update `APP_URL`, `WEBHOOK_URL`, and the OAuth app callback URL to match.
 
@@ -68,9 +68,9 @@ Free Postgres expires after 30 days. When it does, recreate it, then run the mig
 
 ## OAuth apps
 
-There is one app per environment. The app requests the scopes `read:user repo admin:repo_hook` at sign-in. Client IDs and secrets go in the password manager, never in the repo.
+There is one app per environment. The staging app is owned by Alan, so ask him to change its URLs. The app requests the scopes `read:user repo admin:repo_hook` at sign-in. Client IDs and secrets go in the password manager, never in the repo.
 
 | Environment | Homepage URL | Callback URL |
 | --- | --- | --- |
 | Local | `http://localhost:5173` | `http://localhost:5173/auth/github/callback` |
-| Staging | `https://pr-pulse-staging.onrender.com` | `https://pr-pulse-staging.onrender.com/auth/github/callback` |
+| Staging | `https://pr-pulse-443w.onrender.com` | `https://pr-pulse-443w.onrender.com/auth/github/callback` |
