@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser'
 import path from 'path'
 import authRouter from './modules/auth/router'
 import queueRouter from './modules/queue/router'
+import teamRepoRouter from './modules/team-repo/router'
 
 const app = express()
 
@@ -18,8 +19,8 @@ app.get('/health', (_req, res) => {
 
 app.use(authRouter)
 app.use(queueRouter)
+app.use(teamRepoRouter)
 
-// TODO (Kaushik): mount repos router at /api/repos
 // TODO (Mandaar): mount my-prs router at /api/my-prs
 // TODO (Mallikarjun): mount prs router at /api/my-prs/:id
 
