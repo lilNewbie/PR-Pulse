@@ -120,7 +120,7 @@ describe('Day 6 permission matrix', () => {
         .get('/api/me')
         .set('Cookie', `session=${users[role].sessionId}`)
 
-      console.log('ME RESPONSE:', role, response.status, response.body)
+      expect(response.status).toBe(200)
     })
 
     it(`allows ${role} to access /api/my-prs`, async () => {
