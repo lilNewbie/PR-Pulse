@@ -196,5 +196,33 @@ describe('Day 6 permission matrix', () => {
       expect(response.status).toBe(404)
     })
   }
+
+  it('returns 403 with no PR fields when user has no repo access (US-01 AC3, NFR-02)', async () => {
+    // Create a second repo in the same team that none of the test users have repo_access to
+    const { rows: [{ team_id }] } = await pool.query<{ team_id: number }>(
+      `SELECT team_id FROM repos WHERE github_repo_id = 99001`,
+    )
+    const { rows: [inaccessibleRepo] } = await pool.query<{ id: number }>(
+      `INSERT INTO repos (team_id, github_repo_id, owner, name, webhook_secret_enc, status, sync_status)
+       VALUES ($1, 99002, 'other-org', 'private-repo', 'test-secret', 'connected', 'ok')
+       RETURNING id`,
+      [team_id],
+    )
+    const { rows: [pr] } = await pool.query<{ id: number }>(
+      `INSERT INTO pull_requests (repo_id, number, title, author_github_id, state, is_draft,
+         lines_changed, last_activity_at, github_updated_at, behind_by, base_ref)
+       VALUES ($1, 1, 'Private PR', 99099, 'open', false, 10, NOW(), NOW(), 0, 'main')
+       RETURNING id`,
+      [inaccessibleRepo.id],
+    )
+
+    const res = await request(app)
+      .get(`/api/my-prs/${pr.id}`)
+      .set('Cookie', `session=${users.reviewer.sessionId}`)
+
+    expect(res.status).toBe(403)
+    // Body must contain only the error field — no PR data leaked
+    expect(res.body).toEqual({ error: "You don't have access to this repository" })
+  })
 })
 

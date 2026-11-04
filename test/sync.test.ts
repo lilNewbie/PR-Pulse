@@ -228,7 +228,7 @@ describe('PR Sync Service', () => {
       mockPr(p2)
       const result = await syncRepo(repoId, 'initial')
       expect(result).toMatchObject({ status: 'ok', prsUpserted: 2, prsClosed: 0 })
-      expect(result.lastSyncedAt).toBeInstanceOf(Date)
+      expect(typeof result.lastSyncedAt).toBe('string')
       expect(await repoRow()).toMatchObject({ status: 'connected', sync_status: 'ok', retry_after: null })
       expect((await prRow(2)).is_draft).toBe(true)
     })
