@@ -1,14 +1,11 @@
 import pool from '../db/pool'
+import { listConnectedRepoIds } from '../db/repos'
 import { syncRepo } from '../sync'
 
 export async function runScheduledSync(): Promise<void> {
-  const { rows } = await pool.query<{ id: number }>(
-    `SELECT id FROM repos WHERE status = 'connected' ORDER BY id`,
-  )
+  const repoIds = await listConnectedRepoIds()
 
-  for (const repo of rows) {
-    const repoId = Number(repo.id)
-
+  for (const repoId of repoIds) {
     try {
       const result = await syncRepo(repoId, 'scheduled')
       console.log(
