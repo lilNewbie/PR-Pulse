@@ -180,6 +180,36 @@ describe('GET /api/my-prs/:id', () => {
     expect(res.body.reviews).toHaveLength(2)
   })
 
+  it('US-01: shows the latest review of each reviewer separately', async () => {
+    await pool.query(
+      `INSERT INTO reviews
+        (pr_id, reviewer_github_id, state, submitted_at)
+       VALUES ($1, 1003, 'changes_requested', '2026-11-02T12:00:00Z')`,
+      [prId],
+    )
+
+    const res = await request(app)
+      .get(`/api/my-prs/${prId}`)
+      .set('Cookie', `session=${authorizedSession}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.reviews).toHaveLength(2)
+    expect(res.body.reviews).toEqual(
+      expect.arrayContaining([
+        {
+          reviewerLogin: 'test_reviewer',
+          state: 'approved',
+          submittedAt: '2026-11-01T11:00:00.000Z',
+        },
+        {
+          reviewerLogin: 'test_outsider',
+          state: 'changes_requested',
+          submittedAt: '2026-11-02T12:00:00.000Z',
+        },
+      ]),
+    )
+  })
+
   it('returns 400 for an invalid PR ID', async () => {
     const res = await request(app)
       .get('/api/my-prs/invalid')
