@@ -27,6 +27,9 @@ export async function seedDevelopmentData(): Promise<void> {
 
   const url = new URL(databaseUrl)
 
+  // Port 5433 matches the PostgreSQL mapping in docker-compose.yml.
+  // If the local Docker port changes, update this safety check as well.
+  // Never run this seed against a production or shared database.
   if (
     process.env.NODE_ENV !== 'development' ||
     !['localhost', '127.0.0.1'].includes(url.hostname) ||
@@ -349,11 +352,11 @@ export async function seedDevelopmentData(): Promise<void> {
         authorGithubId: 900004,
         state: 'open',
         isDraft: false,
-        hoursSinceActivity: 5,
+        hoursSinceActivity: 8,
         linesChanged: 20,
         mergeable: true,
         behindBy: 0,
-        reviewRequestedHoursAgo: 5,
+        reviewRequestedHoursAgo: 8,
         reviewerGithubId: 900002,
       },
       {
@@ -363,11 +366,11 @@ export async function seedDevelopmentData(): Promise<void> {
         authorGithubId: 900004,
         state: 'open',
         isDraft: false,
-        hoursSinceActivity: 5,
+        hoursSinceActivity: 8,
         linesChanged: 200,
         mergeable: true,
         behindBy: 0,
-        reviewRequestedHoursAgo: 5,
+        reviewRequestedHoursAgo: 8,
         reviewerGithubId: 900002,
       },
       {
@@ -381,8 +384,6 @@ export async function seedDevelopmentData(): Promise<void> {
         linesChanged: 80,
         mergeable: null,
         behindBy: 0,
-        reviewRequestedHoursAgo: 3,
-        reviewerGithubId: 900002,
       },
       {
         number: 7,
