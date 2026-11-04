@@ -1,5 +1,9 @@
+
 export type Role = 'pr_author' | 'reviewer' | 'lead'
+
 export type PrState = 'open' | 'closed' | 'merged'
+
+export type ReviewState = 'approved' | 'changes_requested' | 'commented'
 
 export interface Flags {
   stale: boolean
@@ -21,6 +25,18 @@ export interface PrSummary {
   flags: Flags
 }
 
+export interface PrDetail extends PrSummary {
+  reviewRequests: {
+    reviewerLogin: string
+    requestedAt: string
+  }[]
+  reviews: {
+    reviewerLogin: string
+    state: ReviewState
+    submittedAt: string
+  }[]
+}
+
 export interface QueueItem extends PrSummary {
   waitingHours: number
   position: number
@@ -40,7 +56,10 @@ export interface Me {
   id: number
   login: string
   role: Role
-  repos: { id: number; fullName: string }[]
+  repos: {
+    id: number
+    fullName: string
+  }[]
 }
 
 export interface ApiError {

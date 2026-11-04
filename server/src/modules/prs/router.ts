@@ -1,46 +1,89 @@
 
 import { Router } from 'express'
+import type { PrDetail } from 'shared'
 import { requireSession } from '../../middleware/session'
-import { getPrForUser } from '../../db/prs'
+import {
+  getPrForUser,
+  getPrDetailRow,
+  listReviewRequests,
+  listLatestReviews,
+} from '../../db/prs'
+import { computeFlags } from '../../flags'
 
 const router = Router()
 
-router.get('/api/my-prs/:id', requireSession, (req, res, next) => {
-  const rawId = req.params.id
+router.get('/api/my-prs/:id', requireSession, async (req, res, next) => {
+  try {
+    const rawId = req.params.id
 
-  // Validate the PR ID before querying the database.
-  if (
-    typeof rawId !== 'string' ||
-    !/^[1-9]\d*$/.test(rawId)
-  ) {
-    res.status(400).json({ error: 'Invalid PR ID' })
-    return
+    if (typeof rawId !== 'string' || !/^[1-9]\d*$/.test(rawId)) {
+      res.status(400).json({ error: 'Invalid PR ID' })
+      return
+    }
+
+    const prId = Number(rawId)
+
+    if (!Number.isSafeInteger(prId)) {
+      res.status(400).json({ error: 'Invalid PR ID' })
+      return
+    }
+
+    const userId = req.user!.id
+
+    // Verify repository access before fetching detail data.
+    const accessResult = await getPrForUser(userId, prId)
+
+    if (accessResult === 'not_found') {
+      res.status(404).json({ error: 'PR not found' })
+      return
+    }
+
+    if (accessResult === 'forbidden') {
+      res.status(403).json({
+        error: "You don't have access to this repository",
+      })
+      return
+    }
+
+    const [pr, reviewRequestRows, reviewRows] = await Promise.all([
+      getPrDetailRow(prId),
+      listReviewRequests(prId),
+      listLatestReviews(prId),
+    ])
+
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' })
+      return
+    }
+
+    const response: PrDetail = {
+      id: Number(pr.id),
+      repo: pr.repo_full_name,
+      number: pr.number,
+      title: pr.title,
+      url: `https://github.com/${pr.repo_full_name}/pull/${pr.number}`,
+      authorLogin: pr.author_login,
+      state: pr.state,
+      isDraft: pr.is_draft,
+      linesChanged: pr.lines_changed,
+      flags: computeFlags(pr, new Date()),
+
+      reviewRequests: reviewRequestRows.map((row) => ({
+        reviewerLogin: row.reviewer_login,
+        requestedAt: row.requested_at.toISOString(),
+      })),
+
+      reviews: reviewRows.map((row) => ({
+        reviewerLogin: row.reviewer_login,
+        state: row.state,
+        submittedAt: row.submitted_at.toISOString(),
+      })),
+    }
+
+    res.status(200).json(response)
+  } catch (error) {
+    next(error)
   }
-
-  const prId = Number(rawId)
-
-  if (!Number.isSafeInteger(prId)) {
-    res.status(400).json({ error: 'Invalid PR ID' })
-    return
-  }
-
-  const userId = req.user!.id
-
-  getPrForUser(userId, prId)
-    .then((result) => {
-      if (result === 'not_found') {
-        res.status(404).json({ error: 'PR not found' })
-        return
-      }
-
-      if (result === 'forbidden') {
-        res.status(403).json({ error: 'Forbidden' })
-        return
-      }
-
-      res.status(200).json(result)
-    })
-    .catch(next)
 })
 
 export default router

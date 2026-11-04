@@ -1,3 +1,6 @@
+
+import type { ReviewState } from 'shared'
+
 // Owned by Mallikarjun from day 2. Alan provides the initial stubs.
 
 export interface PrRow {
@@ -24,4 +27,19 @@ export interface QueueRow extends PrRow {
   requested_at: Date
   sync_status: 'ok' | 'rate_limited' | 'failed'
   last_synced_at: Date | null
+}
+
+export interface PrDetailRow extends PrRow {
+  author_login: string
+}
+
+export interface ReviewRequestRow {
+  reviewer_login: string
+  requested_at: Date
+}
+
+export interface LatestReviewRow {
+  reviewer_login: string
+  state: ReviewState
+  submitted_at: Date
 }
