@@ -9,7 +9,7 @@ services:
     name: pr-pulse-staging
     runtime: node
     plan: free
-    branch: main
+    branch: render-test
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -31,19 +31,3 @@ services:
       - key: WEBHOOK_URL
         sync: false
 
-  - type: cron
-    name: pr-pulse-staging-sync
-    runtime: node
-    plan: starter
-    branch: main
-    schedule: "*/15 * * * *"
-    buildCommand: npm ci --include=dev && npm run build -w server
-    startCommand: node server/dist/server/src/jobs/sync.js
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pr-pulse-staging-db
-          property: connectionString
-      # Must match the API service, or stored tokens can't be decrypted.
-      - key: TOKEN_KEY
-        sync: false

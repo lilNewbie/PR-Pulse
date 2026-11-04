@@ -16,7 +16,7 @@ export interface SyncResult {
   status: 'ok' | 'rate_limited' | 'skipped' | 'failed'
   prsUpserted: number
   prsClosed: number
-  lastSyncedAt: Date | null
+  lastSyncedAt: string | null
 }
 
 // PRs updated on GitHub this recently are left to their in-flight webhook.
@@ -94,7 +94,7 @@ export async function syncRepo(repoId: number, mode: 'initial' | 'scheduled'): P
 
   // Backing off after a rate limit: no GitHub calls at all (Diagram 6, step 4).
   if (repo.retryAfter && repo.retryAfter > new Date()) {
-    return { status: 'skipped', prsUpserted: 0, prsClosed: 0, lastSyncedAt: repo.lastSyncedAt }
+    return { status: 'skipped', prsUpserted: 0, prsClosed: 0, lastSyncedAt: repo.lastSyncedAt?.toISOString() ?? null }
   }
 
   try {
@@ -119,7 +119,7 @@ export async function syncRepo(repoId: number, mode: 'initial' | 'scheduled'): P
       for (const s of fresh) if (await upsertPr(client, repoId, s)) prsUpserted++
       for (const s of gone) if (await upsertPr(client, repoId, s)) prsClosed++
       const lastSyncedAt = await markSyncOk(client, repoId, mode === 'initial')
-      return { status: 'ok' as const, prsUpserted, prsClosed, lastSyncedAt }
+      return { status: 'ok' as const, prsUpserted, prsClosed, lastSyncedAt: lastSyncedAt.toISOString() }
     })
   } catch (err) {
     const rateLimitedUntil = err instanceof gh.GitHubApiError ? err.rateLimitResetAt : null
@@ -131,7 +131,7 @@ export async function syncRepo(repoId: number, mode: 'initial' | 'scheduled'): P
       status: rateLimitedUntil ? 'rate_limited' : 'failed',
       prsUpserted: 0,
       prsClosed: 0,
-      lastSyncedAt: repo.lastSyncedAt,
+      lastSyncedAt: repo.lastSyncedAt?.toISOString() ?? null,
     }
   }
 }
