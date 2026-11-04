@@ -19,9 +19,13 @@ export default defineConfig({
     testTimeout: 30000,
 
     env: {
-      // Dedicated test database: never use the development database.
       DATABASE_URL:
-        'postgres://postgres:postgres@localhost:5433/pr_pulse_test',
+      process.env.CI === 'true'
+      ? (process.env.TEST_DATABASE_URL ??
+        'postgres://postgres:postgres@localhost:5432/pr_pulse_test')
+      : 'postgres://postgres:postgres@localhost:5433/pr_pulse_test',
+
+
 
       TOKEN_KEY:
         process.env.TOKEN_KEY ??
