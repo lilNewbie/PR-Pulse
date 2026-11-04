@@ -12,27 +12,14 @@ type State =
 
 type Tone = 'warn' | 'danger' | 'muted'
 
-const TONES: Record<Tone, { background: string; color: string }> = {
-  warn: { background: '#fff4d6', color: '#7a5200' },
-  danger: { background: '#fde2e1', color: '#9b1c1c' },
-  muted: { background: '#eceef1', color: '#3d4450' },
+const TONE_CLASS: Record<Tone, string> = {
+  warn:   'badge badge-warn',
+  danger: 'badge badge-danger',
+  muted:  'badge badge-muted',
 }
 
 function Badge({ tone, children }: { tone: Tone; children: string }) {
-  return (
-    <span
-      style={{
-        ...TONES[tone],
-        borderRadius: 999,
-        padding: '2px 8px',
-        fontSize: 12,
-        fontWeight: 600,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {children}
-    </span>
-  )
+  return <span className={TONE_CLASS[tone]}>{children}</span>
 }
 
 // The badges for one PR, in the order: stale, conflict, behind (US-08, US-09).
@@ -48,23 +35,16 @@ export function flagBadges(flags: Flags): { tone: Tone; label: string }[] {
 function PrRow({ pr }: { pr: PrSummary }) {
   const badges = flagBadges(pr.flags)
   return (
-    <li style={{ padding: '12px 0', borderBottom: '1px solid #e5e7eb' }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <a href={pr.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
-          {pr.title}
-        </a>
-        <span style={{ color: '#6b7280', fontSize: 13 }}>
-          {pr.repo} #{pr.number}
-          {pr.isDraft ? ' · Draft' : ''} · {pr.linesChanged} lines
-        </span>
+    <li className="pr-item">
+      <div className="pr-title">
+        <a href={pr.url} target="_blank" rel="noreferrer">{pr.title}</a>
+      </div>
+      <div className="pr-meta">
+        {pr.repo} #{pr.number}{pr.isDraft ? ' · Draft' : ''} · {pr.linesChanged} lines
       </div>
       {badges.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-          {badges.map((b) => (
-            <Badge key={b.label} tone={b.tone}>
-              {b.label}
-            </Badge>
-          ))}
+        <div className="pr-badges">
+          {badges.map((b) => <Badge key={b.label} tone={b.tone}>{b.label}</Badge>)}
         </div>
       )}
     </li>
@@ -83,20 +63,18 @@ export default function MyPRs() {
       })
   }, [])
 
-  if (state.status === 'loading') return <p>Loading…</p>
+  if (state.status === 'loading') return <p className="text-muted">Loading…</p>
   if (state.status === 'unauthenticated') return <Navigate to="/signin" replace />
-  if (state.status === 'error') return <p>Couldn't load your PRs: {state.message}</p>
+  if (state.status === 'error') return <p className="text-error">Couldn't load your PRs: {state.message}</p>
 
   return (
     <section>
-      <h1 style={{ fontSize: 20 }}>My PRs</h1>
+      <h2 className="page-title">My PRs</h2>
       {state.items.length === 0 ? (
-        <p>You have no open pull requests.</p>
+        <p className="text-muted">You have no open pull requests.</p>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {state.items.map((pr) => (
-            <PrRow key={pr.id} pr={pr} />
-          ))}
+        <ul className="pr-list">
+          {state.items.map((pr) => <PrRow key={pr.id} pr={pr} />)}
         </ul>
       )}
     </section>

@@ -1,0 +1,383 @@
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d29922;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Nav ─────────────────────────────────────────── */
+
+.nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.nav-logo {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  letter-spacing: -0.2px;
+  margin-right: 0.5rem;
+}
+
+.nav-logo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+
+.nav-links { display: flex; gap: 2px; flex: 1; }
+
+.nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.nav-link:hover { color: var(--text); background: var(--surface-2); }
+.nav-link.active { color: var(--text); background: var(--surface-2); }
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.nav-login { font-weight: 500; color: var(--text); }
+
+.btn-signout {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.btn-signout:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Page shell ───────────────────────────────────── */
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Buttons & inputs ────────────────────────────── */
+
+button:not(.btn-signout) {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+button:not(.btn-signout):hover:not(:disabled) { opacity: 0.85; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 12px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.1s, box-shadow 0.1s;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+}
+
+input::placeholder { color: var(--text-muted); }
+
+/* ── Sign-in ─────────────────────────────────────── */
+
+.signin-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.signin-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  width: 340px;
+}
+
+.signin-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.signin-logo h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.signin-tagline {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 2rem;
+}
+
+.signin-error {
+  color: var(--red);
+  font-size: 13px;
+  margin-bottom: 1rem;
+}
+
+.btn-github {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  width: 100%;
+}
+
+.btn-github:hover { background: var(--accent); border-color: var(--accent); }
+
+/* ── My PRs ──────────────────────────────────────── */
+
+.pr-list {
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pr-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.1s;
+}
+
+.pr-item:last-child { border-bottom: none; }
+.pr-item:hover { background: var(--surface-2); }
+
+.pr-title a {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.pr-title a:hover { color: var(--accent); text-decoration: underline; }
+
+.pr-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  margin-top: 3px;
+}
+
+.pr-badges { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ── Badges ──────────────────────────────────────── */
+
+.badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-warn   { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+.badge-danger { background: rgba(248,  81, 73, 0.15); color: var(--red); }
+.badge-muted  { background: var(--surface-2);          color: var(--text-muted); }
+
+/* ── Review Queue ────────────────────────────────── */
+
+.sync-warning {
+  background: rgba(210, 153, 34, 0.08);
+  border: 1px solid rgba(210, 153, 34, 0.35);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: var(--yellow);
+  font-size: 13px;
+  margin-bottom: 1.25rem;
+}
+
+.queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.queue-table th {
+  background: var(--surface);
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  vertical-align: middle;
+}
+
+.queue-table tr:last-child td { border-bottom: none; }
+.queue-table tr:hover td { background: var(--surface-2); }
+
+.queue-table a { color: var(--text); font-weight: 500; text-decoration: none; }
+.queue-table a:hover { color: var(--accent); text-decoration: underline; }
+
+.queue-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Team Repos ──────────────────────────────────── */
+
+.connect-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.connect-form-sep { color: var(--text-muted); font-weight: 600; }
+.connect-form-error { color: var(--red); font-size: 13px; width: 100%; }
+
+.repo-list {
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.repo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  gap: 1rem;
+}
+
+.repo-item:last-child { border-bottom: none; }
+
+.repo-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.repo-status-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.status-ok     { color: var(--green); }
+.status-error  { color: var(--red); }
+.status-syncing { color: var(--yellow); }
+
+/* ── Misc ────────────────────────────────────────── */
+
+.text-muted  { color: var(--text-muted); font-size: 13px; }
+.text-error  { color: var(--red); font-size: 13px; }
+
+.no-repos-notice {
+  background: rgba(88, 166, 255, 0.05);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 6px;
+  padding: 9px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 1rem;
+}
