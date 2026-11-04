@@ -6,50 +6,30 @@ databases:
 
 services:
   - type: web
-    name: pr-pulse-staging-api
+    name: pr-pulse-staging
     runtime: node
     plan: free
     branch: main
-    buildCommand: npm ci --include=dev && npm run build -w server
-    startCommand: npm run migrate && node server/dist/server/src/index.js
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: pr-pulse-staging-db
           property: connectionString
+      - key: NODE_ENV
+        value: production
       - key: GITHUB_CLIENT_ID
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
       - key: TOKEN_KEY
         sync: false
-      - key: SESSION_SECRET
-        generateValue: true
       - key: APP_URL
-        sync: false
-      - key: PUBLIC_URL
         sync: false
       - key: WEBHOOK_URL
         sync: false
-
-  # Requests go through this host so the session cookie stays on one origin.
-  - type: web
-    name: pr-pulse-staging
-    runtime: static
-    branch: main
-    buildCommand: npm ci --include=dev && npm run build -w client
-    staticPublishPath: client/dist
-    routes:
-      - type: rewrite
-        source: /api/*
-        destination: https://pr-pulse-staging-api.onrender.com/api/*
-      - type: rewrite
-        source: /auth/*
-        destination: https://pr-pulse-staging-api.onrender.com/auth/*
-      - type: rewrite
-        source: /*
-        destination: /index.html
 
   - type: cron
     name: pr-pulse-staging-sync
