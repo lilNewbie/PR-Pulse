@@ -52,11 +52,6 @@ export interface MyPrsResponse {
   items: PrSummary[]
 }
 
-export interface PrDetail extends PrSummary {
-  reviewRequests: { reviewerGithubId: number; requestedAt: string }[]
-  reviews: { reviewerGithubId: number; state: string; submittedAt: string }[]
-}
-
 export interface Me {
   id: number
   login: string

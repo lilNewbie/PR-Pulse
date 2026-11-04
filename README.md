@@ -23,6 +23,15 @@ Open http://localhost:5173. `npm run seed` loads demo data (a team, users in eac
 
 ## Tests
 
+Tests use a separate `pr_pulse_test` database in the same Docker container. Create and migrate it once:
+
+```sh
+docker compose exec db createdb -U postgres pr_pulse_test
+DATABASE_URL=postgres://postgres:postgres@localhost:5433/pr_pulse_test npm run migrate
+```
+
+Then:
+
 ```sh
 npm run lint && npm run typecheck && npm test
 ```
