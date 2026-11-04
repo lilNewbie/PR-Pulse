@@ -10,6 +10,7 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts'],
     setupFiles: ['test/setup.ts'],
+    fileParallelism: false,
     testTimeout: 30000,
     env: {
       DATABASE_URL:
