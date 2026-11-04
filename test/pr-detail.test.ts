@@ -193,7 +193,7 @@ describe('GET /api/my-prs/:id', () => {
       .set('Cookie', `session=${authorizedSession}`)
 
     expect(res.status).toBe(200)
-    expect(res.body.reviews).toHaveLength(2)
+    expect(res.body.reviews).toHaveLength(3)
     expect(res.body.reviews).toEqual(
       expect.arrayContaining([
         {
