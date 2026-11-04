@@ -1,16 +1,43 @@
 
 import { Router } from 'express'
-import type { PrDetail } from 'shared'
+import type { MyPrsResponse, PrDetail } from 'shared'
 import { requireSession } from '../../middleware/session'
 import {
   getPrForUser,
   getPrDetailRow,
   listReviewRequests,
   listLatestReviews,
+  listMyPrs,
 } from '../../db/prs'
 import { computeFlags } from '../../flags'
 
 const router = Router()
+router.get('/api/my-prs', requireSession, async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const prs = await listMyPrs(userId)
+    const now = new Date()
+
+    const response: MyPrsResponse = {
+      items: prs.map((pr) => ({
+        id: Number(pr.id),
+        repo: pr.repo_full_name,
+        number: pr.number,
+        title: pr.title,
+        url: `https://github.com/${pr.repo_full_name}/pull/${pr.number}`,
+        authorLogin: req.user!.login,
+        state: pr.state,
+        isDraft: pr.is_draft,
+        linesChanged: pr.lines_changed,
+        flags: computeFlags(pr, now),
+      })),
+    }
+
+    res.status(200).json(response)
+  } catch (error) {
+    next(error)
+  }
+})
 
 router.get('/api/my-prs/:id', requireSession, async (req, res, next) => {
   try {
