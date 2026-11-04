@@ -52,6 +52,19 @@ export async function listTeamRepos(userId: number): Promise<RepoRow[]> {
   return rows
 }
 
+export async function listAccessibleRepoSyncStatus(
+  userId: number,
+): Promise<Pick<RepoRow, 'sync_status' | 'last_synced_at'>[]> {
+  const { rows } = await pool.query<Pick<RepoRow, 'sync_status' | 'last_synced_at'>>(
+    `SELECT r.sync_status, r.last_synced_at
+     FROM repos r
+     JOIN repo_access ra ON ra.repo_id = r.id
+     WHERE ra.user_id = $1`,
+    [userId],
+  )
+  return rows
+}
+
 // Inserts the repo in the connecting user's team and gives them access to it.
 // Throws RepoAlreadyConnectedError if another connect for the same repo won the race.
 export async function insertConnectingRepo(repo: NewRepo): Promise<number> {

@@ -10,9 +10,8 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts'],
     setupFiles: ['test/setup.ts'],
-    testTimeout: 30000,
-    // Test files share one database and truncate tables, so run them one at a time.
     fileParallelism: false,
+    testTimeout: 30000,
     env: {
       DATABASE_URL:
         process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/pr_pulse',
