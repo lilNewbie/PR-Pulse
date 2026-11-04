@@ -2,11 +2,12 @@ import express from 'express'
 import cookieParser from 'cookie-parser'
 import path from 'path'
 import authRouter from './modules/auth/router'
+import webhookRouter from './webhook/router'
 
 const app = express()
 
 // Webhook route MUST be mounted before express.json() so it can read the raw body
-// TODO (Mandaar): app.use('/webhooks', webhookRouter)
+app.use('/webhooks', webhookRouter)
 
 app.use(express.json())
 app.use(cookieParser())
