@@ -41,29 +41,30 @@ export default function TeamRepos() {
     return () => clearInterval(timer)
   }, [importing, loadRepos])
 
-  if (me.status === 'loading') return <p>Loading…</p>
+  if (me.status === 'loading') return <p className="text-muted">Loading…</p>
   if (me.status === 'unauthenticated') return <Navigate to="/signin" />
-  if (me.status === 'error') return <p>Error: {me.message}</p>
+  if (me.status === 'error') return <p className="text-error">Error: {me.message}</p>
 
   return (
     <div>
-      <h1>Team & Repos</h1>
+      <h2 className="page-title">Team Repos</h2>
 
       {me.me.role === 'lead' ? (
         <ConnectRepoForm onConnected={loadRepos} />
       ) : (
-        <p>Only a Lead can connect repos</p>
+        <p className="text-muted">Only a Lead can connect repos.</p>
       )}
 
-      {loadError && <p style={{ color: '#c00' }}>{loadError}</p>}
+      {loadError && <p className="text-error">{loadError}</p>}
 
       {repos === null ? null : repos.length === 0 ? (
-        <p>No repositories connected yet.</p>
+        <p className="text-muted">No repositories connected yet.</p>
       ) : (
-        <ul>
+        <ul className="repo-list">
           {repos.map((repo) => (
-            <li key={repo.id}>
-              <strong>{repo.fullName}</strong> <RepoStatus repo={repo} />
+            <li key={repo.id} className="repo-item">
+              <span className="repo-name">{repo.fullName}</span>
+              <RepoStatus repo={repo} />
             </li>
           ))}
         </ul>
@@ -73,17 +74,21 @@ export default function TeamRepos() {
 }
 
 function RepoStatus({ repo }: { repo: RepoSummary }) {
-  if (repo.status === 'connecting') return <span>Importing open PRs…</span>
+  if (repo.status === 'connecting')
+    return <span className="repo-status-text status-syncing">Importing open PRs…</span>
 
   const lastSynced = repo.lastSyncedAt
-    ? `Last synced at ${new Date(repo.lastSyncedAt).toLocaleString()}`
+    ? `Last synced ${new Date(repo.lastSyncedAt).toLocaleString()}`
     : 'Not synced yet'
+
   return (
-    <span>
-      {lastSynced}
-      {repo.syncStatus !== 'ok' && (
-        <span style={{ color: '#c00' }}> · sync {repo.syncStatus.replace('_', ' ')}</span>
+    <span className="repo-status-text">
+      {repo.syncStatus !== 'ok' ? (
+        <span className="status-error">Sync {repo.syncStatus.replace('_', ' ')} · </span>
+      ) : (
+        <span className="status-ok">✓ </span>
       )}
+      {lastSynced}
     </span>
   )
 }
@@ -111,7 +116,7 @@ function ConnectRepoForm({ onConnected }: { onConnected: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+    <form onSubmit={handleSubmit} className="connect-form">
       <input
         aria-label="Owner"
         placeholder="owner"
@@ -119,18 +124,18 @@ function ConnectRepoForm({ onConnected }: { onConnected: () => void }) {
         onChange={(e) => setOwner(e.target.value)}
         required
       />
-      <span>/</span>
+      <span className="connect-form-sep">/</span>
       <input
         aria-label="Repository name"
-        placeholder="name"
+        placeholder="repo-name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         required
       />
       <button type="submit" disabled={submitting}>
-        {submitting ? 'Connecting…' : 'Connect'}
+        {submitting ? 'Connecting…' : 'Connect repo'}
       </button>
-      {error && <span style={{ color: '#c00' }}>{error}</span>}
+      {error && <span className="connect-form-error">{error}</span>}
     </form>
   )
 }

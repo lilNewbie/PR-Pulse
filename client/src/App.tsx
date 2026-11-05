@@ -1,15 +1,34 @@
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
 import MyPRs from './pages/MyPRs'
 import ReviewQueue from './pages/ReviewQueue'
 import TeamRepos from './pages/TeamRepos'
 import SignIn from './pages/SignIn'
 import { useMe } from './hooks/useMe'
+import { apiFetch } from './api/client'
 
-// US-01 AC3: signed in, but none of the connected repos are visible to this user.
+function NavUser() {
+  const me = useMe()
+  const navigate = useNavigate()
+
+  if (me.status !== 'ok') return null
+
+  async function signOut() {
+    await apiFetch('/auth/logout', { method: 'POST' }).catch(() => {})
+    navigate('/signin')
+  }
+
+  return (
+    <div className="nav-user">
+      <span className="nav-login">{me.me.login}</span>
+      <button className="btn-signout" onClick={signOut}>Sign out</button>
+    </div>
+  )
+}
+
 function NoReposNotice() {
   const me = useMe()
   if (me.status !== 'ok' || me.me.repos.length > 0) return null
-  return <p>No connected repositories you can access</p>
+  return <p className="no-repos-notice">No connected repositories you can access</p>
 }
 
 export default function App() {
@@ -21,14 +40,25 @@ export default function App() {
           path="/*"
           element={
             <>
-              <nav
-                style={{ padding: '1rem', borderBottom: '1px solid #ccc', display: 'flex', gap: '1rem' }}
-              >
-                <NavLink to="/my-prs">My PRs</NavLink>
-                <NavLink to="/queue">Review Queue</NavLink>
-                <NavLink to="/repos">Team Repos</NavLink>
+              <nav className="nav">
+                <a href="/" className="nav-logo">
+                  <span className="nav-logo-dot" />
+                  PR Pulse
+                </a>
+                <div className="nav-links">
+                  <NavLink to="/my-prs" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+                    My PRs
+                  </NavLink>
+                  <NavLink to="/queue" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+                    Review Queue
+                  </NavLink>
+                  <NavLink to="/repos" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+                    Team Repos
+                  </NavLink>
+                </div>
+                <NavUser />
               </nav>
-              <main style={{ padding: '1rem' }}>
+              <main className="page">
                 <NoReposNotice />
                 <Routes>
                   <Route path="/" element={<MyPRs />} />

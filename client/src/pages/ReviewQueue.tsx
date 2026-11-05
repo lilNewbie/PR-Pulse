@@ -11,12 +11,12 @@ type QueueState =
 
 function FlagBadges({ flags }: { flags: Flags }) {
   return (
-    <>
-      {flags.stale && <span className="badge">Stale</span>}
-      {flags.conflict === 'yes' && <span className="badge">Conflict</span>}
-      {flags.conflict === 'checking' && <span className="badge">Checking</span>}
-      {flags.behindBy > 0 && <span className="badge">Behind {flags.behindBy}</span>}
-    </>
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      {flags.stale && <span className="badge badge-warn">Stale</span>}
+      {flags.conflict === 'yes' && <span className="badge badge-danger">Conflict</span>}
+      {flags.conflict === 'checking' && <span className="badge badge-muted">Checking…</span>}
+      {flags.behindBy > 0 && <span className="badge badge-warn">Behind {flags.behindBy}</span>}
+    </div>
   )
 }
 
@@ -38,32 +38,33 @@ export default function ReviewQueue() {
       })
   }, [me.status, navigate])
 
-  if (me.status === 'loading') return <p>Loading…</p>
+  if (me.status === 'loading') return <p className="text-muted">Loading…</p>
 
   if (me.status === 'unauthenticated') {
     navigate('/signin')
     return null
   }
 
-  if (me.status === 'error') return <p>Error: {me.message}</p>
+  if (me.status === 'error') return <p className="text-error">Error: {me.message}</p>
 
-  if (queue.status === 'loading') return <p>Loading…</p>
-  if (queue.status === 'error') return <p>Error: {queue.message}</p>
+  if (queue.status === 'loading') return <p className="text-muted">Loading…</p>
+  if (queue.status === 'error') return <p className="text-error">Error: {queue.message}</p>
 
   const { items, syncWarning, lastSyncedAt } = queue.data
 
   return (
     <div>
+      <h2 className="page-title">Review Queue</h2>
       {syncWarning && (
         <div className="sync-warning">
-          ⚠ Repositories out of sync — last synced at{' '}
+          ⚠ Repositories out of sync — last synced{' '}
           {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'unknown'}
         </div>
       )}
       {items.length === 0 ? (
-        <p>Nothing to review right now.</p>
+        <p className="text-muted">Nothing to review right now.</p>
       ) : (
-        <table>
+        <table className="queue-table">
           <thead>
             <tr>
               <th>#</th>
@@ -78,19 +79,13 @@ export default function ReviewQueue() {
           <tbody>
             {items.map((item) => (
               <tr key={item.id}>
-                <td>{item.position}</td>
-                <td>
-                  <a href={item.url} target="_blank" rel="noreferrer">
-                    {item.title}
-                  </a>
-                </td>
-                <td>{item.repo}</td>
-                <td>{item.authorLogin}</td>
-                <td>{item.waitingHours}h</td>
-                <td>{item.linesChanged}</td>
-                <td>
-                  <FlagBadges flags={item.flags} />
-                </td>
+                <td className="queue-mono">{item.position}</td>
+                <td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td>
+                <td className="queue-mono">{item.repo}</td>
+                <td className="queue-mono">{item.authorLogin}</td>
+                <td className="queue-mono">{item.waitingHours}h</td>
+                <td className="queue-mono">{item.linesChanged}</td>
+                <td><FlagBadges flags={item.flags} /></td>
               </tr>
             ))}
           </tbody>
