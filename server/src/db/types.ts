@@ -12,6 +12,7 @@ export interface PrRow {
   author_github_id: number
   state: 'open' | 'closed' | 'merged'
   is_draft: boolean
+  is_release_blocker: boolean
   ready_at: Date | null
   lines_changed: number
   last_activity_at: Date
@@ -21,6 +22,36 @@ export interface PrRow {
   base_ref: string
   merge_commit_sha: string | null
   merged_at: Date | null
+}
+
+export interface DeploymentRow {
+  id: number
+  repo_id: number
+  sha: string
+  environment: 'staging' | 'production'
+  status: 'pending' | 'success' | 'failed'
+  source: 'manual' | 'webhook'
+  external_identifier: string | null
+  recorded_by: number | null
+  created_at: Date
+}
+
+export interface DeploymentPrRow {
+  deployment_id: number
+  pr_id: number
+}
+
+export interface PrFileRow {
+  pr_id: number
+  path: string
+}
+
+export interface FileTouchRow {
+  repo_id: number
+  path: string
+  author_login: string
+  commit_sha: string
+  committed_at: Date
 }
 
 export interface QueueRow extends PrRow {
