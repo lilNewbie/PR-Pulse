@@ -10,8 +10,10 @@ import {
   listMyPrs,
 } from '../../db/prs'
 import { computeFlags } from '../../flags'
+import deploymentHistoryRouter from './deployment-history'
 
 const router = Router()
+router.use(deploymentHistoryRouter)
 router.get('/api/my-prs', requireSession, async (req, res, next) => {
   try {
     const userId = req.user!.id
