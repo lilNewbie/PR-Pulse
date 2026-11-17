@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router
 import MyPRs from './pages/MyPRs'
 import ReviewQueue from './pages/ReviewQueue'
 import TeamRepos from './pages/TeamRepos'
+import Deployments from './pages/Deployments'
+import DeploymentDetail from './pages/DeploymentDetail'
 import SignIn from './pages/SignIn'
 import { useMe } from './hooks/useMe'
 import { apiFetch } from './api/client'
@@ -22,6 +24,16 @@ function NavUser() {
       <span className="nav-login">{me.me.login}</span>
       <button className="btn-signout" onClick={signOut}>Sign out</button>
     </div>
+  )
+}
+
+function DeploymentsNavLink() {
+  const me = useMe()
+  if (me.status !== 'ok' || me.me.role !== 'lead') return null
+  return (
+    <NavLink to="/deployments" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+      Deployments
+    </NavLink>
   )
 }
 
@@ -55,6 +67,7 @@ export default function App() {
                   <NavLink to="/repos" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
                     Team Repos
                   </NavLink>
+                  <DeploymentsNavLink />
                 </div>
                 <NavUser />
               </nav>
@@ -65,6 +78,8 @@ export default function App() {
                   <Route path="/my-prs" element={<MyPRs />} />
                   <Route path="/queue" element={<ReviewQueue />} />
                   <Route path="/repos" element={<TeamRepos />} />
+                  <Route path="/deployments" element={<Deployments />} />
+                  <Route path="/deployments/:id" element={<DeploymentDetail />} />
                 </Routes>
               </main>
             </>
