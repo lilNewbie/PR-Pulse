@@ -40,9 +40,11 @@ export function fixtureName(event: string, body: Body): string | null {
       const ref = typeof body.ref === 'string' ? body.ref : ''
       return ref.startsWith('refs/heads/') ? `push.${ref.slice('refs/heads/'.length)}` : null
     }
-    case 'deployment_status':
+    case 'deployment_status': {
       // US-12: one fixture per state, e.g. deployment_status.success.
-      return `deployment_status.${String(obj(body.deployment_status).state)}`
+      const state = obj(body.deployment_status).state
+      return typeof state === 'string' ? `deployment_status.${state}` : null
+    }
     default:
       return null
   }
