@@ -1,13 +1,18 @@
 // Owned by Mandaar. PR Sync Service: the only writer of PR data (design 1.1, 4.2, Diagrams 5 and 6).
+import { z } from 'zod'
 import { getGitHubToken } from '../modules/auth/token'
 import * as gh from '../github/pulls'
 import {
+  getBackfillProgress,
   getSyncRepo,
+  insertFileTouches,
   listOpenPrNumbers,
   markSyncFailed,
   markSyncOk,
+  setRetryAfter,
   upsertPr,
   withTransaction,
+  type FileTouch,
   type PrSnapshot,
   type SyncRepo,
 } from '../db/prWrites'
@@ -21,6 +26,9 @@ export interface SyncResult {
 
 // PRs updated on GitHub this recently are left to their in-flight webhook.
 const WEBHOOK_GRACE_MS = 2 * 60 * 1000
+
+// US-04: the label is fixed (design-final section 6).
+export const RELEASE_BLOCKER_LABEL = 'release-blocker'
 
 const REVIEW_STATES: Record<string, string> = {
   APPROVED: 'approved',
@@ -41,11 +49,13 @@ async function fetchSnapshot(token: string, repo: SyncRepo, prNumber: number): P
   const { owner, name } = repo
   const pull = await gh.getPull(token, owner, name, prNumber)
   const isOpen = pull.state === 'open'
-  const [reviews, behindBy, commitDate, commentDate] = await Promise.all([
+  const [reviews, behindBy, commitDate, commentDate, files] = await Promise.all([
     gh.listReviews(token, owner, name, prNumber),
     isOpen ? gh.getBehindBy(token, owner, name, pull.base.ref, pull.head.sha) : Promise.resolve(0),
     gh.getCommitDate(token, owner, name, pull.head.sha),
     gh.getLatestCommentDate(token, owner, name, prNumber),
+    // Only open PRs get suggestions, so a closed PR keeps the files it had.
+    isOpen ? gh.listPullFiles(token, owner, name, prNumber) : Promise.resolve(null),
   ])
 
   const submitted = reviews
@@ -75,6 +85,8 @@ async function fetchSnapshot(token: string, repo: SyncRepo, prNumber: number): P
     mergedAt: pull.merged_at ? new Date(pull.merged_at) : null,
     requestedReviewerIds: pull.requested_reviewers.map((u) => u.id),
     reviews: submitted,
+    isReleaseBlocker: (pull.labels ?? []).some((l) => l.name === RELEASE_BLOCKER_LABEL),
+    files,
   }
 }
 
@@ -113,7 +125,7 @@ export async function syncRepo(repoId: number, mode: 'initial' | 'scheduled'): P
     for (const n of missing) gone.push(await fetchSnapshot(token, repo, n))
 
     // All writes in one transaction, only after every GitHub call succeeded.
-    return await withTransaction(async (client) => {
+    const result = await withTransaction(async (client) => {
       let prsUpserted = 0
       let prsClosed = 0
       for (const s of fresh) if (await upsertPr(client, repoId, s)) prsUpserted++
@@ -121,6 +133,15 @@ export async function syncRepo(repoId: number, mode: 'initial' | 'scheduled'): P
       const lastSyncedAt = await markSyncOk(client, repoId, mode === 'initial')
       return { status: 'ok' as const, prsUpserted, prsClosed, lastSyncedAt: lastSyncedAt.toISOString() }
     })
+
+    // A new repo gets its commit history for suggestions and expertise (US-11, US-15).
+    // The PRs are already committed, so a backfill problem doesn't fail the sync.
+    if (mode === 'initial') {
+      await backfillFileTouches(repoId).catch((err: unknown) => {
+        console.error(`backfill: repo ${repoId} failed: ${err instanceof Error ? err.message : String(err)}`)
+      })
+    }
+    return result
   } catch (err) {
     const rateLimitedUntil = err instanceof gh.GitHubApiError ? err.rateLimitResetAt : null
     await markSyncFailed(repoId, rateLimitedUntil ? 'rate_limited' : 'failed', rateLimitedUntil)
@@ -134,4 +155,88 @@ export async function syncRepo(repoId: number, mode: 'initial' | 'scheduled'): P
       lastSyncedAt: repo.lastSyncedAt?.toISOString() ?? null,
     }
   }
+}
+
+// ---- File touches (US-11, US-15; design-final sections 2 and 4) ----
+
+const isBot = (login: string) => login.endsWith('[bot]')
+
+const pushPayload = z.object({
+  ref: z.string(),
+  deleted: z.boolean().optional(),
+  repository: z.object({ default_branch: z.string() }),
+  commits: z
+    .array(
+      z.object({
+        id: z.string(),
+        timestamp: z.string(),
+        author: z.object({ username: z.string().optional() }).optional(),
+        added: z.array(z.string()).default([]),
+        modified: z.array(z.string()).default([]),
+      }),
+    )
+    .default([]),
+})
+
+// Pure: the touches a push records. Only pushes to the default branch count; commits without a
+// GitHub username and bot commits are skipped. The payload lists the files, so no API calls.
+export function touchesFromPush(payload: unknown): FileTouch[] {
+  const p = pushPayload.safeParse(payload)
+  if (!p.success || p.data.deleted || p.data.ref !== `refs/heads/${p.data.repository.default_branch}`) return []
+  return p.data.commits.flatMap((c) => {
+    const login = c.author?.username
+    if (!login || isBot(login)) return []
+    const paths = [...new Set([...c.added, ...c.modified])]
+    return paths.map((path) => ({ path, authorLogin: login, commitSha: c.id, committedAt: new Date(c.timestamp) }))
+  })
+}
+
+// Called by the Webhook Receiver for a verified `push`. Returns how many touches were new.
+export async function recordPushTouches(repoId: number, payload: unknown): Promise<number> {
+  return insertFileTouches(repoId, touchesFromPush(payload))
+}
+
+export const BACKFILL_DAYS = 180
+export const BACKFILL_MAX_COMMITS = 500
+
+// Default-branch history from the last 180 days, newest first, at most 500 commits in total across runs.
+// On a rate limit it keeps what it stored, sets retry_after, and the next run resumes from the oldest
+// stored commit. Inserts skip touches already stored, so re-running never duplicates.
+export async function backfillFileTouches(repoId: number): Promise<{ commits: number; files: number }> {
+  const done = { commits: 0, files: 0 }
+  const repo = await getSyncRepo(repoId)
+  if (!repo) return done
+  if (repo.retryAfter && repo.retryAfter > new Date()) return done // backing off, no GitHub calls
+
+  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 3600_000)
+  const progress = await getBackfillProgress(repoId, since)
+  const remaining = BACKFILL_MAX_COMMITS - progress.commits
+  if (remaining <= 0) return done
+
+  const token = await tokenFor(repo)
+  try {
+    const commits = await gh.listCommits(token, repo.owner, repo.name, since, progress.oldest, remaining)
+    for (const c of commits) {
+      const login = c.author?.login
+      if (!login || isBot(login)) continue
+      const files = await gh.getCommitFiles(token, repo.owner, repo.name, c.sha)
+      const touches = files
+        .filter((f) => f.status === 'added' || f.status === 'modified')
+        .map((f) => ({
+          path: f.filename,
+          authorLogin: login,
+          commitSha: c.sha,
+          committedAt: new Date(c.commit.committer.date),
+        }))
+      done.files += await insertFileTouches(repoId, touches)
+      done.commits++
+    }
+  } catch (err) {
+    if (err instanceof gh.GitHubApiError && err.rateLimitResetAt) {
+      await setRetryAfter(repoId, err.rateLimitResetAt)
+      return done
+    }
+    throw err
+  }
+  return done
 }

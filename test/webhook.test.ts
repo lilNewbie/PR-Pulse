@@ -8,9 +8,15 @@ import { encrypt } from '../server/src/lib/crypto'
 vi.mock('../server/src/sync', () => ({
   applyEvent: vi.fn(),
   syncRepo: vi.fn(),
+  recordPushTouches: vi.fn(),
+}))
+vi.mock('../server/src/modules/deployments', () => ({
+  recordDeploymentEvent: vi.fn(),
+  linkDeployment: vi.fn(),
 }))
 
-import { applyEvent } from '../server/src/sync'
+import { applyEvent, recordPushTouches } from '../server/src/sync'
+import { recordDeploymentEvent } from '../server/src/modules/deployments'
 
 const SECRET = 'test-webhook-secret'
 const GITHUB_REPO_ID = 900001
@@ -80,6 +86,10 @@ describe('US-02 Webhook Receiver', () => {
     repoId = Number(repo.id)
     vi.mocked(applyEvent).mockReset()
     vi.mocked(applyEvent).mockResolvedValue(undefined)
+    vi.mocked(recordPushTouches).mockReset()
+    vi.mocked(recordPushTouches).mockResolvedValue(0)
+    vi.mocked(recordDeploymentEvent).mockReset()
+    vi.mocked(recordDeploymentEvent).mockResolvedValue(1)
   })
 
   it('NFR-03: bad signature returns 401 and writes nothing', async () => {
@@ -200,5 +210,64 @@ describe('US-02 Webhook Receiver', () => {
     const res = await send('pull_request', prPayload('opened'), { delivery: null })
     expect(res.status).toBe(400)
     expect(await deliveryCount()).toBe(0)
+  })
+
+  describe('US-12: deployment_status', () => {
+    const deployment = (environment: string, state = 'success') => ({
+      action: 'created',
+      deployment_status: { state, environment },
+      deployment: { id: 555, sha: 'abc123', environment },
+      repository,
+    })
+
+    it('production: returns 202 and calls recordDeploymentEvent with the payload', async () => {
+      const payload = deployment('production')
+      const res = await send('deployment_status', payload)
+      expect(res.status).toBe(202)
+      await vi.waitFor(() => expect(recordDeploymentEvent).toHaveBeenCalledWith(repoId, payload))
+      expect(applyEvent).not.toHaveBeenCalled()
+    })
+
+    it('staging: returns 202 and calls recordDeploymentEvent', async () => {
+      const res = await send('deployment_status', deployment('staging', 'failure'))
+      expect(res.status).toBe(202)
+      await vi.waitFor(() => expect(recordDeploymentEvent).toHaveBeenCalledTimes(1))
+    })
+
+    it('preview: returns 200 and writes nothing', async () => {
+      const res = await send('deployment_status', deployment('preview'))
+      expect(res.status).toBe(200)
+      expect(await deliveryCount()).toBe(0)
+      await new Promise((r) => setTimeout(r, 50))
+      expect(recordDeploymentEvent).not.toHaveBeenCalled()
+    })
+
+    it('bad signature: returns 401 and writes nothing', async () => {
+      const res = await send('deployment_status', deployment('production'), { signature: 'sha256=' + '0'.repeat(64) })
+      expect(res.status).toBe(401)
+      expect(await deliveryCount()).toBe(0)
+      expect(recordDeploymentEvent).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('US-11, US-15: push records file touches', () => {
+    it('a push hands its payload to recordPushTouches and still re-checks open PRs on that branch', async () => {
+      await insertPr(1, 'main')
+      const payload = { ref: 'refs/heads/main', repository: { ...repository, default_branch: 'main' }, commits: [] }
+      const res = await send('push', payload)
+      expect(res.status).toBe(202)
+      await vi.waitFor(() => expect(recordPushTouches).toHaveBeenCalledWith(repoId, payload))
+      await vi.waitFor(() => expect(applyEvent).toHaveBeenCalledWith(repoId, 1))
+    })
+
+    it('a failure recording touches does not stop the PR re-checks', async () => {
+      await insertPr(1, 'main')
+      vi.mocked(recordPushTouches).mockRejectedValue(new Error('db down'))
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      await send('push', { ref: 'refs/heads/main', repository })
+      await vi.waitFor(() => expect(applyEvent).toHaveBeenCalledWith(repoId, 1))
+      expect(errors).toHaveBeenCalledWith(expect.stringContaining('file touches failed'))
+      errors.mockRestore()
+    })
   })
 })

@@ -94,6 +94,8 @@ export interface PrSnapshot {
   mergedAt: Date | null
   requestedReviewerIds: number[]
   reviews: { githubReviewId: number; reviewerGithubId: number | null; state: string; submittedAt: Date }[]
+  isReleaseBlocker: boolean // has the `release-blocker` label (US-04)
+  files: string[] | null // changed paths (US-11); null = not fetched, keep the stored set
 }
 
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -124,9 +126,10 @@ export async function upsertPr(client: PoolClient, repoId: number, s: PrSnapshot
   const { rows } = await client.query<{ id: string }>(
     `INSERT INTO pull_requests
        (repo_id, number, title, author_github_id, state, is_draft, ready_at, lines_changed,
-        last_activity_at, github_updated_at, mergeable, behind_by, base_ref, merge_commit_sha, merged_at)
+        last_activity_at, github_updated_at, mergeable, behind_by, base_ref, merge_commit_sha, merged_at,
+        is_release_blocker)
      VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6 THEN NULL ELSE $15::timestamptz END, $7,
-             $8, $9, $10, $11, $12, $13, $14)
+             $8, $9, $10, $11, $12, $13, $14, $16)
      ON CONFLICT (repo_id, number) DO UPDATE SET
        title = EXCLUDED.title,
        author_github_id = EXCLUDED.author_github_id,
@@ -141,17 +144,29 @@ export async function upsertPr(client: PoolClient, repoId: number, s: PrSnapshot
        behind_by = EXCLUDED.behind_by,
        base_ref = EXCLUDED.base_ref,
        merge_commit_sha = EXCLUDED.merge_commit_sha,
-       merged_at = EXCLUDED.merged_at
+       merged_at = EXCLUDED.merged_at,
+       is_release_blocker = EXCLUDED.is_release_blocker
      WHERE pull_requests.github_updated_at <= EXCLUDED.github_updated_at
      RETURNING id`,
     [
       repoId, s.number, s.title, s.authorGithubId, s.state, s.isDraft, s.linesChanged,
       s.lastActivityAt, s.githubUpdatedAt, s.mergeable, s.behindBy, s.baseRef, s.mergeCommitSha, s.mergedAt,
-      s.createdAt,
+      s.createdAt, s.isReleaseBlocker,
     ],
   )
   if (!rows[0]) return false
   const prId = Number(rows[0].id)
+
+  // Changed files are the current list on GitHub (US-11).
+  if (s.files !== null) {
+    await client.query('DELETE FROM pr_files WHERE pr_id = $1 AND NOT (path = ANY($2::text[]))', [prId, s.files])
+    await client.query(
+      `INSERT INTO pr_files (pr_id, path)
+       SELECT $1, unnest($2::text[])
+       ON CONFLICT (pr_id, path) DO NOTHING`,
+      [prId, s.files],
+    )
+  }
 
   // Review requests are the current set on GitHub. A reviewer who stays keeps their requested_at;
   // a new or re-requested one (e.g. after reviewing) gets a fresh one (US-02 AC1, AC2).
@@ -181,4 +196,49 @@ export async function upsertPr(client: PoolClient, repoId: number, s: PrSnapshot
     )
   }
   return true
+}
+
+// ---- File touches (US-11, US-15): who last changed which file on the default branch ----
+
+export interface FileTouch {
+  path: string
+  authorLogin: string
+  commitSha: string
+  committedAt: Date
+}
+
+// Inserts touches, skipping ones already stored. Returns how many were new.
+export async function insertFileTouches(repoId: number, touches: FileTouch[]): Promise<number> {
+  if (touches.length === 0) return 0
+  const { rowCount } = await pool.query(
+    `INSERT INTO file_touches (repo_id, path, author_login, commit_sha, committed_at)
+     SELECT $1, * FROM unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[])
+     ON CONFLICT (repo_id, path, commit_sha) DO NOTHING`,
+    [
+      repoId,
+      touches.map((t) => t.path),
+      touches.map((t) => t.authorLogin),
+      touches.map((t) => t.commitSha),
+      touches.map((t) => t.committedAt),
+    ],
+  )
+  return rowCount ?? 0
+}
+
+// Where a backfill stands: distinct commits stored since `since`, and the oldest of them.
+export async function getBackfillProgress(
+  repoId: number,
+  since: Date,
+): Promise<{ commits: number; oldest: Date | null }> {
+  const { rows } = await pool.query<{ commits: number; oldest: Date | null }>(
+    `SELECT count(DISTINCT commit_sha)::int AS commits, min(committed_at) AS oldest
+     FROM file_touches WHERE repo_id = $1 AND committed_at >= $2`,
+    [repoId, since],
+  )
+  return rows[0]
+}
+
+// Backfill hit the rate limit: back off like the sync does (Diagram 6). PR data and sync_status stay as they are.
+export async function setRetryAfter(repoId: number, retryAfter: Date): Promise<void> {
+  await pool.query('UPDATE repos SET retry_after = $2 WHERE id = $1', [repoId, retryAfter])
 }

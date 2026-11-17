@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { decrypt } from '../lib/crypto'
 import { findWebhookRepo, recordDelivery } from '../db/webhookEvents'
 import { verifySignature } from './signature'
-import { processDelivery } from './dispatch'
+import { isTrackedDeployment, processDelivery } from './dispatch'
 
 const router = Router()
 
@@ -49,6 +49,12 @@ router.post('/github', express.raw({ type: 'application/json', limit: '25mb' }),
       return
     }
     const event = h.data['x-github-event']
+
+    // Deploys to environments other than staging and production: 200, nothing written (US-12).
+    if (event === 'deployment_status' && !isTrackedDeployment(payload)) {
+      res.status(200).end()
+      return
+    }
 
     // 3. Each delivery is processed once. Repeat: 200, nothing written (NFR-06).
     if (!(await recordDelivery(h.data['x-github-delivery'], repo.id, event))) {

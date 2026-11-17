@@ -85,6 +85,7 @@ export interface GhPull {
   additions?: number // only on the single-PR endpoint
   deletions?: number // only on the single-PR endpoint
   requested_reviewers: GhUser[]
+  labels?: { name: string }[]
   base: { ref: string }
   head: { sha: string }
 }
@@ -120,6 +121,65 @@ export async function getBehindBy(token: string, owner: string, name: string, ba
 export async function getCommitDate(token: string, owner: string, name: string, sha: string): Promise<string> {
   const res = await get(token, `${repoPath(owner, name)}/commits/${sha}`)
   return ((await res.json()) as { commit: { committer: { date: string } } }).commit.committer.date
+}
+
+// GitHub lists at most 3,000 files for a PR (30 pages of 100).
+export const MAX_PR_FILES = 3000
+
+// Paths the PR changes, all pages, capped at GitHub's 3,000-file limit (US-11).
+export async function listPullFiles(token: string, owner: string, name: string, n: number): Promise<string[]> {
+  const paths: string[] = []
+  let url: string | null = `${repoPath(owner, name)}/pulls/${n}/files?per_page=100`
+  while (url && paths.length < MAX_PR_FILES) {
+    const res = await get(token, url)
+    paths.push(...((await res.json()) as { filename: string }[]).map((f) => f.filename))
+    url = nextLink(res)
+  }
+  return paths.slice(0, MAX_PR_FILES)
+}
+
+export interface GhCommit {
+  sha: string
+  author: { login: string } | null // the GitHub account, null when the email matches no account
+  commit: { committer: { date: string } }
+}
+
+// Default-branch commits in [since, until], newest first, at most `max`.
+export async function listCommits(
+  token: string,
+  owner: string,
+  name: string,
+  since: Date,
+  until: Date | null,
+  max: number,
+): Promise<GhCommit[]> {
+  const params = new URLSearchParams({ since: since.toISOString(), per_page: '100' })
+  if (until) params.set('until', until.toISOString())
+  const commits: GhCommit[] = []
+  let url: string | null = `${repoPath(owner, name)}/commits?${params}`
+  while (url && commits.length < max) {
+    const res = await get(token, url)
+    commits.push(...((await res.json()) as GhCommit[]))
+    url = nextLink(res)
+  }
+  return commits.slice(0, max)
+}
+
+export interface GhCommitFile {
+  filename: string
+  status: string // added | modified | removed | renamed | copied | changed | unchanged
+}
+
+// The files one commit changed, all pages.
+export async function getCommitFiles(token: string, owner: string, name: string, sha: string): Promise<GhCommitFile[]> {
+  const files: GhCommitFile[] = []
+  let url: string | null = `${repoPath(owner, name)}/commits/${sha}?per_page=100`
+  while (url) {
+    const res = await get(token, url)
+    files.push(...(((await res.json()) as { files?: GhCommitFile[] }).files ?? []))
+    url = nextLink(res)
+  }
+  return files
 }
 
 // When the PR's latest conversation comment was posted, or null. Comments come oldest first, so read the last page.
