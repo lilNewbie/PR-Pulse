@@ -17,4 +17,5 @@ export const up = (pgm: MigrationBuilder): void => {
 
 export const down = (pgm: MigrationBuilder): void => {
   pgm.dropTable('suggestion_feedback')
+  pgm.sql('DROP INDEX IF EXISTS review_requests_reviewer_github_id_idx')
 }

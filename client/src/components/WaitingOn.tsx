@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import type { PrSummary, WaitingOnItem } from 'shared'
 import { apiFetch } from '../api/client'
 
-// Module-level cache so all mounted instances share one fetch.
+// Module-level cache so all mounted instances share one fetch per page load.
+// Cleared after the fetch settles so a navigation back to My PRs gets fresh data.
 let cachedPromise: Promise<WaitingOnItem[]> | null = null
 function fetchWaitingOn(): Promise<WaitingOnItem[]> {
   if (!cachedPromise) {
-    cachedPromise = apiFetch<WaitingOnItem[]>('/api/my-prs/waiting').catch((err) => {
+    cachedPromise = apiFetch<WaitingOnItem[]>('/api/my-prs/waiting').finally(() => {
       cachedPromise = null
-      throw err
     })
   }
   return cachedPromise
