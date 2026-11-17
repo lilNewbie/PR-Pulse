@@ -83,3 +83,18 @@ export async function deleteHook(
 ): Promise<void> {
   await githubFetch(token, `/repos/${owner}/${name}/hooks/${hookId}`, { method: 'DELETE' })
 }
+
+// Replaces the hook's event list (GitHub "Update a repository webhook").
+export async function updateHookEvents(
+  token: string,
+  owner: string,
+  name: string,
+  hookId: number,
+  events: string[],
+): Promise<void> {
+  await githubFetch(token, `/repos/${owner}/${name}/hooks/${hookId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events }),
+  })
+}

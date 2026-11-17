@@ -17,7 +17,8 @@
     "test": "vitest run",
     "migrate": "node --import tsx node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m migrations",
     "seed": "tsx server/seed/index.ts",
-    "backfill": "tsx scripts/backfill.ts"
+    "backfill": "tsx scripts/backfill.ts",
+    "hooks:update": "tsx scripts/hooks-update.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -205,3 +205,99 @@ describe('GET /api/my-prs', () => {
     })
   })
 })
+
+describe('US-08, US-09 GET /api/my-prs: shape and flags', () => {
+  const ME = 1001
+  let session: string
+  let repoId: number
+
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000)
+
+  async function insertPr(
+    number: number,
+    fields: { lastActivity?: Date; mergeable?: boolean | null; behindBy?: number } = {},
+  ) {
+    await pool.query(
+      `INSERT INTO pull_requests
+         (repo_id, number, title, author_github_id, state, is_draft, lines_changed,
+          last_activity_at, github_updated_at, mergeable, behind_by, base_ref)
+       VALUES ($1, $2, $3, $4, 'open', false, 12, $5, now(), $6, $7, 'main')`,
+      [
+        repoId,
+        number,
+        `PR ${number}`,
+        ME,
+        fields.lastActivity ?? hoursAgo(1),
+        fields.mergeable === undefined ? true : fields.mergeable,
+        fields.behindBy ?? 0,
+      ],
+    )
+  }
+
+  beforeEach(async () => {
+    await pool.query(
+      `TRUNCATE TABLE webhook_events, reviews, review_requests, pull_requests, repo_access, repos,
+         sessions, members, users, teams RESTART IDENTITY CASCADE`,
+    )
+    const {
+      rows: [team],
+    } = await pool.query<{ id: string }>("INSERT INTO teams (name) VALUES ('Team') RETURNING id")
+    const {
+      rows: [user],
+    } = await pool.query<{ id: string }>(
+      "INSERT INTO users (github_id, login, github_token_enc) VALUES ($1, 'mandaar', $2) RETURNING id",
+      [ME, encrypt('gh-token')],
+    )
+    await pool.query("INSERT INTO members (team_id, user_id, role) VALUES ($1, $2, 'pr_author')", [team.id, user.id])
+    session = 'my-prs-shape-session'
+    await pool.query("INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, now() + interval '1 day')", [
+      session,
+      user.id,
+    ])
+    const { rows } = await pool.query<{ id: string }>(
+      `INSERT INTO repos (team_id, github_repo_id, owner, name, webhook_secret_enc, status, sync_status)
+       VALUES ($1, 1, 'pr-pulse-test', 'sandbox', 'x', 'connected', 'ok') RETURNING id`,
+      [team.id],
+    )
+    repoId = Number(rows[0].id)
+    await pool.query('INSERT INTO repo_access (user_id, repo_id) VALUES ($1, $2)', [user.id, repoId])
+  })
+
+  it('US-08: returns each PR as a PrSummary', async () => {
+    await insertPr(7)
+    const res = await request(app).get('/api/my-prs').set('Cookie', `session=${session}`)
+    expect(res.body).toEqual({
+      items: [
+        {
+          id: expect.any(Number),
+          repo: 'pr-pulse-test/sandbox',
+          number: 7,
+          title: 'PR 7',
+          url: 'https://github.com/pr-pulse-test/sandbox/pull/7',
+          authorLogin: 'mandaar',
+          state: 'open',
+          isDraft: false,
+          linesChanged: 12,
+          flags: { stale: false, inactiveHours: 1, conflict: 'no', behindBy: 0 },
+        },
+      ],
+    })
+  })
+
+  it('US-08, US-09: flags come from computeFlags (stale, conflict, checking, behind)', async () => {
+    await insertPr(1, { lastActivity: hoursAgo(30), mergeable: false, behindBy: 4 })
+    await insertPr(2, { mergeable: null })
+    const res = await request(app).get('/api/my-prs').set('Cookie', `session=${session}`)
+    const flags = Object.fromEntries(
+      res.body.items.map((i: { number: number; flags: unknown }) => [i.number, i.flags]),
+    )
+    expect(flags[1]).toEqual({ stale: true, inactiveHours: 30, conflict: 'yes', behindBy: 4 })
+    expect(flags[2]).toMatchObject({ stale: false, conflict: 'checking' })
+  })
+
+  it('US-08: empty list when I have no open PRs', async () => {
+    const res = await request(app).get('/api/my-prs').set('Cookie', `session=${session}`)
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ items: [] })
+  })
+})

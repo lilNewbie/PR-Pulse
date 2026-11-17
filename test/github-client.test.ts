@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import nock from 'nock'
-import { createHook, deleteHook, getRepo, GitHubError } from '../server/src/github/client'
+import { createHook, deleteHook, getRepo, GitHubError, updateHookEvents } from '../server/src/github/client'
 
 const GITHUB_API = 'https://api.github.com'
 const HOOK_INPUT = {
@@ -90,5 +90,15 @@ describe('GitHub client', () => {
     nock(GITHUB_API).delete('/repos/acme/api/hooks/99').reply(204)
 
     await expect(deleteHook('token', 'acme', 'api', 99)).resolves.toBeUndefined()
+  })
+
+  it('updateHookEvents patches the hook with the full events list', async () => {
+    const events = [...HOOK_INPUT.events, 'deployment_status']
+    const scope = nock(GITHUB_API, { reqheaders: { authorization: 'Bearer token' } })
+      .patch('/repos/acme/api/hooks/99', { events })
+      .reply(200, { id: 99, events })
+
+    await expect(updateHookEvents('token', 'acme', 'api', 99, events)).resolves.toBeUndefined()
+    expect(scope.isDone()).toBe(true)
   })
 })
