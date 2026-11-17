@@ -7,6 +7,7 @@ import prsRouter from './modules/prs/router'
 import queueRouter from './modules/queue/router'
 import suggestionsRouter from './modules/suggestions/router'
 import deploymentsRouter from './modules/deployments/router'
+import expertiseRouter from './modules/expertise/router'
 import teamRepoRouter from './modules/team-repo/router'
 import webhookRouter from './webhook/router'
 
@@ -27,6 +28,7 @@ app.use(authRouter)
 app.use(queueRouter)
 app.use(suggestionsRouter)
 app.use(deploymentsRouter)
+app.use(expertiseRouter)
 app.use(teamRepoRouter)
 
 // Day 3: Authenticated PR details endpoint
