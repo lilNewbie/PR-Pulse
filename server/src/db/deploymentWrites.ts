@@ -43,7 +43,7 @@ export async function getPreviousSuccessDeployment(
   return { id: Number(rows[0].id), sha: rows[0].sha }
 }
 
-// Replace all deployment_prs for a deployment atomically (idempotent)
+// Replace all deployment_prs for a deployment atomically and stamp linked_at (idempotent)
 export async function replaceDeploymentPrs(deploymentId: number, prIds: number[]): Promise<void> {
   const client = await pool.connect()
   try {
@@ -56,6 +56,7 @@ export async function replaceDeploymentPrs(deploymentId: number, prIds: number[]
         [deploymentId, ...prIds],
       )
     }
+    await client.query('UPDATE deployments SET linked_at = now() WHERE id = $1', [deploymentId])
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK')
@@ -220,11 +221,13 @@ export async function getDeploymentDetail(
   }
 }
 
-// Deployments that have a previous success deploy but no linked PRs — eligible for retry
+// Deployments whose linking has never completed (linked_at IS NULL) and have a previous
+// success deploy to compare against — eligible for retry after a GitHub failure.
+// Deployments legitimately linked to zero PRs have linked_at set and are excluded.
 export async function listUnlinkedDeploymentIds(): Promise<number[]> {
   const { rows } = await pool.query<{ id: string }>(
     `SELECT d.id FROM deployments d
-     WHERE NOT EXISTS (SELECT 1 FROM deployment_prs dp WHERE dp.deployment_id = d.id)
+     WHERE d.linked_at IS NULL
        AND EXISTS (
          SELECT 1 FROM deployments prev
          WHERE prev.repo_id = d.repo_id

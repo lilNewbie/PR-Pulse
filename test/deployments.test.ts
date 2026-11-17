@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { listUnlinkedDeploymentIds } from '../server/src/db/deploymentWrites'
 import request from 'supertest'
 import nock from 'nock'
 import app from '../server/src/app'
@@ -282,6 +283,20 @@ describe('US-12 deployments', () => {
       [id1],
     )
     expect(dpRows).toHaveLength(1)
+  })
+
+  it('US-12 AC9: deploy legitimately linked to zero PRs is not retried on subsequent syncs', async () => {
+    await insertDeployment(repoId, 'sha-prev', 'staging', 'success', '2026-11-10T10:00:00Z')
+    const currId = await insertDeployment(repoId, 'sha-curr', 'staging', 'success', '2026-11-11T10:00:00Z')
+
+    // No merged PRs in this range — legitimate zero-PR deployment
+    mockCompare('sha-prev', 'sha-curr', ['commit-no-match'])
+    const result = await linkDeployment(currId)
+    expect(result.prCount).toBe(0)
+
+    // linked_at should be set, so this deployment is NOT returned as needing retry
+    const unlinked = await listUnlinkedDeploymentIds()
+    expect(unlinked).not.toContain(currId)
   })
 
   it('US-12 AC8: GitHub compare failure keeps the deployment row; a later linkDeployment call links it', async () => {
