@@ -5,7 +5,13 @@ import { encrypt } from '../../lib/crypto'
 import { findRepoByGithubId, insertConnectingRepo, RepoAlreadyConnectedError } from '../../db/repos'
 import { syncRepo } from '../../sync'
 
-export const HOOK_EVENTS = ['pull_request', 'pull_request_review', 'issue_comment', 'push']
+export const HOOK_EVENTS = [
+  'pull_request',
+  'pull_request_review',
+  'issue_comment',
+  'push',
+  'deployment_status',
+]
 
 export type ConnectResult =
   | { ok: true; repoId: number }

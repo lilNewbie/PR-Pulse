@@ -109,7 +109,13 @@ describe('US-05 Connect a repository', () => {
     expect(res.body).toEqual({ repoId: expect.any(Number), status: 'connecting' })
     expect(getScope.isDone() && hookScope.isDone()).toBe(true)
 
-    expect(hookBody?.events).toEqual(['pull_request', 'pull_request_review', 'issue_comment', 'push'])
+    expect(hookBody?.events).toEqual([
+      'pull_request',
+      'pull_request_review',
+      'issue_comment',
+      'push',
+      'deployment_status',
+    ])
     expect(hookBody?.config).toMatchObject({ url: WEBHOOK_URL, content_type: 'json' })
 
     const { rows } = await pool.query(

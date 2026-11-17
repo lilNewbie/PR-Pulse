@@ -16,7 +16,8 @@
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test": "vitest run",
     "migrate": "node --import tsx node_modules/node-pg-migrate/bin/node-pg-migrate.js up -m migrations",
-    "seed": "tsx server/seed/index.ts"
+    "seed": "tsx server/seed/index.ts",
+    "hooks:update": "tsx scripts/hooks-update.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
