@@ -85,7 +85,10 @@ export default function ReviewQueue() {
                 <td className="queue-mono">{item.authorLogin}</td>
                 <td className="queue-mono">{item.waitingHours}h</td>
                 <td className="queue-mono">{item.linesChanged}</td>
-                <td><FlagBadges flags={item.flags} /></td>
+                <td>
+                  {item.isReleaseBlocker && <span className="badge badge-danger">Release blocker</span>}
+                  <FlagBadges flags={item.flags} />
+                </td>
               </tr>
             ))}
           </tbody>

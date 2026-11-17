@@ -43,6 +43,7 @@ function makeRow(overrides: Partial<QueueRow> & { id: number }): QueueRow {
     base_ref: 'main',
     merge_commit_sha: null,
     merged_at: null,
+    is_release_blocker: false,
     requested_at: h(5),
     sync_status: 'ok',
     last_synced_at: null,
@@ -84,6 +85,40 @@ async function createUserWithSession(opts: { role?: Role; githubId?: number } = 
   ])
   return { userId: user.id, sessionId, githubId }
 }
+
+describe('US-04 rankQueue', () => {
+  it('US-04 AC1: release-blocking PR ranks above a non-blocking PR that has waited longer', () => {
+    const rows = [
+      makeRow({ id: 1, requested_at: h(30) }),
+      makeRow({ id: 2, requested_at: h(5), is_release_blocker: true }),
+    ]
+    const items = rankQueue(rows, ME, NOW)
+    expect(items[0].id).toBe(2)
+    expect(items[1].id).toBe(1)
+  })
+
+  it('US-04 AC2: two release-blocking PRs ordered by wait time then lines changed', () => {
+    const rows = [
+      makeRow({ id: 1, requested_at: h(10), lines_changed: 50, is_release_blocker: true }),
+      makeRow({ id: 2, requested_at: h(10), lines_changed: 200, is_release_blocker: true }),
+      makeRow({ id: 3, requested_at: h(20), is_release_blocker: true }),
+    ]
+    const items = rankQueue(rows, ME, NOW)
+    expect(items[0].id).toBe(3)
+    expect(items[1].id).toBe(1)
+    expect(items[2].id).toBe(2)
+  })
+
+  it('US-04 AC3: label removed — PR returns to its normal position among non-blockers', () => {
+    const rows = [
+      makeRow({ id: 1, requested_at: h(30) }),
+      makeRow({ id: 2, requested_at: h(5), is_release_blocker: false }),
+    ]
+    const items = rankQueue(rows, ME, NOW)
+    expect(items[0].id).toBe(1)
+    expect(items[1].id).toBe(2)
+  })
+})
 
 describe('US-07 rankQueue', () => {
   it('US-07 AC1: PRs waiting 5h, 30h, 2h are listed 30h, 5h, 2h', () => {

@@ -40,6 +40,7 @@ export interface PrDetail extends PrSummary {
 export interface QueueItem extends PrSummary {
   waitingHours: number
   position: number
+  isReleaseBlocker: boolean
 }
 
 export interface QueueResponse {
