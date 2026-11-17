@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { Flags, MyPrsResponse, PrSummary } from 'shared'
 import { apiFetch, ApiClientError } from '../api/client'
+import WaitingOn from '../components/WaitingOn'
 
 type State =
   | { status: 'loading' }
@@ -47,6 +48,8 @@ function PrRow({ pr }: { pr: PrSummary }) {
           {badges.map((b) => <Badge key={b.label} tone={b.tone}>{b.label}</Badge>)}
         </div>
       )}
+      {/* US-21: who this PR is waiting on (Alan's component; drafts render nothing). */}
+      <WaitingOn pr={pr} />
     </li>
   )
 }
