@@ -4,6 +4,14 @@ import { encrypt } from '../src/lib/crypto'
 
 const DEMO_TEAM = 'PR Pulse Demo Team'
 
+// Synthetic 40-character SHAs, used only by the local demo data.
+// They do not point to commits in a real GitHub repository.
+const DEMO_MERGE_SHAS = {
+  original: '1'.repeat(40),
+  authentication: '2'.repeat(40),
+  dashboard: '3'.repeat(40),
+} as const
+
 const DEMO_USERS = [
   { githubId: 900001, login: 'demo_lead', role: 'lead' },
   { githubId: 900002, login: 'demo_reviewer_1', role: 'reviewer' },
@@ -56,6 +64,9 @@ export async function seedDevelopmentData(): Promise<void> {
     // ========================================
     // STEP 0: CLEAR PREVIOUS DEMO DATA
     // ========================================
+
+    // Deleting demo PRs also cascades to pr_files and deployment_prs;
+    // deleting demo repos cascades to deployments and file_touches.
 
     await client.query(
       `DELETE FROM reviews
@@ -300,6 +311,8 @@ export async function seedDevelopmentData(): Promise<void> {
       behindBy: number
       reviewRequestedHoursAgo?: number
       reviewerGithubId?: number
+      mergeCommitSha?: string
+      isReleaseBlocker?: boolean
     }
 
     const demoPrs: DemoPr[] = [
@@ -349,6 +362,7 @@ export async function seedDevelopmentData(): Promise<void> {
         number: 4,
         title: 'Update API error handling',
         repo: 'sandbox',
+        isReleaseBlocker: true,
         authorGithubId: 900004,
         state: 'open',
         isDraft: false,
@@ -452,6 +466,7 @@ export async function seedDevelopmentData(): Promise<void> {
         number: 12,
         title: 'Previously completed feature',
         repo: 'sandbox',
+        mergeCommitSha: DEMO_MERGE_SHAS.original,
         authorGithubId: 900004,
         state: 'merged',
         isDraft: false,
@@ -472,7 +487,36 @@ export async function seedDevelopmentData(): Promise<void> {
         mergeable: null,
         behindBy: 0,
       },
+      // Additional merged PRs show different PR counts across deploys.
+      {
+        number: 14,
+        title: 'Fix authentication token rotation',
+        repo: 'sandbox',
+        authorGithubId: 900004,
+        state: 'merged',
+        isDraft: false,
+        hoursSinceActivity: 18,
+        linesChanged: 35,
+        mergeable: true,
+        behindBy: 0,
+        mergeCommitSha: DEMO_MERGE_SHAS.authentication,
+      },
+      {
+        number: 15,
+        title: 'Release dashboard improvements',
+        repo: 'sandbox',
+        authorGithubId: 900004,
+        state: 'merged',
+        isDraft: false,
+        hoursSinceActivity: 6,
+        linesChanged: 90,
+        mergeable: true,
+        behindBy: 0,
+        mergeCommitSha: DEMO_MERGE_SHAS.dashboard,
+      },
     ]
+
+    const prIds: Record<number, string> = {}
 
     for (const pr of demoPrs) {
       const lastActivityAt = hoursAgo(pr.hoursSinceActivity)
@@ -492,11 +536,14 @@ export async function seedDevelopmentData(): Promise<void> {
           mergeable,
           behind_by,
           base_ref,
-          merged_at
+          merged_at,
+          merge_commit_sha,
+          is_release_blocker
         )
         VALUES (
           $1, $2, $3, $4, $5, $6, $7,
-          $8, $9, $10, $11, $12, $13, $14
+          $8, $9, $10, $11, $12, $13, $14,
+          $15, $16
         )
         RETURNING id`,
         [
@@ -514,10 +561,13 @@ export async function seedDevelopmentData(): Promise<void> {
           pr.behindBy,
           'main',
           pr.state === 'merged' ? lastActivityAt : null,
+          pr.mergeCommitSha ?? null,
+          pr.isReleaseBlocker ?? false,
         ]
       )
 
       const prId = result.rows[0].id
+      prIds[pr.number] = prId
 
       if (
         pr.reviewRequestedHoursAgo !== undefined &&
@@ -540,6 +590,107 @@ export async function seedDevelopmentData(): Promise<void> {
     }
 
     console.log(`Created ${demoPrs.length} demo pull requests`)
+
+    // ========================================
+    // STEP 6: CHANGED FILES AND FILE HISTORY
+    // ========================================
+
+    // The changed files match existing open PRs, so the suggestions query
+    // can demonstrate eligible reviewers, an ineligible PR Author, and a bot.
+    const changedFiles = [
+      { prNumber: 1, path: 'src/auth/session.ts' },
+      { prNumber: 2, path: 'client/src/pages/Dashboard.tsx' },
+      { prNumber: 3, path: 'client/src/navigation/Menu.tsx' },
+      { prNumber: 5, path: 'server/src/config/bot-only.ts' },
+    ]
+
+    for (const { prNumber, path } of changedFiles) {
+      await client.query(
+        'INSERT INTO pr_files (pr_id, path) VALUES ($1, $2)',
+        [prIds[prNumber], path],
+      )
+    }
+
+    const fileTouches = [
+      // The most recent two touches are ineligible, so reviewer 1 is suggested.
+      { path: 'src/auth/session.ts', login: 'demo_reviewer_1', hours: 45, sha: '4'.repeat(40) },
+      { path: 'src/auth/session.ts', login: 'demo_author', hours: 10, sha: '5'.repeat(40) },
+      { path: 'src/auth/session.ts', login: 'automation[bot]', hours: 2, sha: '6'.repeat(40) },
+      // Reviewer 2 works in a different area.
+      { path: 'client/src/pages/Dashboard.tsx', login: 'demo_reviewer_2', hours: 28, sha: '7'.repeat(40) },
+      // PR Authors and bots are never eligible to be suggested by themselves.
+      { path: 'client/src/navigation/Menu.tsx', login: 'demo_author', hours: 9, sha: '8'.repeat(40) },
+      { path: 'server/src/config/bot-only.ts', login: 'automation[bot]', hours: 3, sha: '9'.repeat(40) },
+    ]
+
+    for (const touch of fileTouches) {
+      await client.query(
+        `INSERT INTO file_touches
+           (repo_id, path, author_login, commit_sha, committed_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [repoIds.sandbox, touch.path, touch.login, touch.sha, hoursAgo(touch.hours)],
+      )
+    }
+
+    console.log(`Created ${changedFiles.length} PR file entries and ${fileTouches.length} file touches`)
+
+    // ========================================
+    // STEP 7: DEPLOYMENT HISTORY AND PR LINKS
+    // ========================================
+
+    // Each deployment's date follows the merge of any linked PR.
+    // A failed deploy still has linked PRs. The first production deploy and
+    // the final staging deploy deliberately have zero linked PRs.
+    const deployments = [
+      {
+        sha: 'a'.repeat(40), environment: 'staging', status: 'success',
+        source: 'manual', hours: 36, prNumbers: [12],
+      },
+      {
+        sha: 'b'.repeat(40), environment: 'staging', status: 'failed',
+        source: 'webhook', hours: 12, prNumbers: [14],
+      },
+      {
+        sha: 'c'.repeat(40), environment: 'staging', status: 'success',
+        source: 'webhook', hours: 3, prNumbers: [14, 15],
+      },
+      {
+        sha: 'd'.repeat(40), environment: 'production', status: 'success',
+        source: 'manual', hours: 2, prNumbers: [],
+      },
+      {
+        sha: 'e'.repeat(40), environment: 'staging', status: 'success',
+        source: 'manual', hours: 1, prNumbers: [],
+      },
+    ] as const
+
+    for (const deployment of deployments) {
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO deployments
+           (repo_id, sha, environment, status, source, recorded_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          repoIds.sandbox,
+          deployment.sha,
+          deployment.environment,
+          deployment.status,
+          deployment.source,
+          deployment.source === 'manual' ? userIds.demo_lead : null,
+          hoursAgo(deployment.hours),
+        ],
+      )
+
+      for (const prNumber of deployment.prNumbers) {
+        await client.query(
+          'INSERT INTO deployment_prs (deployment_id, pr_id) VALUES ($1, $2)',
+          [rows[0].id, prIds[prNumber]],
+        )
+      }
+    }
+
+    console.log(`Created ${deployments.length} deployments, including first production and zero-PR examples`)
+    console.log('Marked sandbox PR #4 as a release blocker')
 
     await client.query('COMMIT')
 
