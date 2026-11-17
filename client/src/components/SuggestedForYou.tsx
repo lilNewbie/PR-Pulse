@@ -1,4 +1,5 @@
-// Owned by Mandaar. "Suggested for you" (US-11): open PRs that change files I worked on most recently.
+// Owned by Mandaar. "Suggested for you" (US-11, US-19): open PRs that change files I worked on recently,
+// where I have the lightest review load among the recent committers.
 // Mounted by Alan on the Review Queue page.
 import { useEffect, useState } from 'react'
 import type { SuggestionItem, SuggestionReason } from 'shared'
@@ -15,7 +16,8 @@ const formatDate = (iso: string) =>
 function Reason({ reason }: { reason: SuggestionReason }) {
   return (
     <div className="pr-meta">
-      You changed <code>{reason.path}</code> on {formatDate(reason.lastCommitAt)}
+      You changed <code>{reason.path}</code> on {formatDate(reason.lastCommitAt)} · {reason.openRequests} open{' '}
+      {reason.openRequests === 1 ? 'review' : 'reviews'}
     </div>
   )
 }

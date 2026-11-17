@@ -67,7 +67,7 @@ export interface ApiError {
   error: string
 }
 
-export interface SuggestionReason { path: string; lastCommitAt: string; openRequests?: number }
+export interface SuggestionReason { path: string; lastCommitAt: string; openRequests: number }
 export interface SuggestionItem extends PrSummary { reasons: SuggestionReason[]; reviewRequested: boolean }
 export interface ExpertiseArea { area: string; commits: number; lastCommitAt: string }
 export interface ExpertiseResponse { repo: { id: number; fullName: string }; areas: ExpertiseArea[] }
