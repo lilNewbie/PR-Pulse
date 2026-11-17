@@ -7,6 +7,8 @@ export function rankQueue(rows: QueueRow[], me: SessionUser, now: Date): QueueIt
   return rows
     .filter((r) => r.state === 'open' && !r.is_draft && Number(r.author_github_id) !== me.githubId)
     .sort((a, b) => {
+      // Release blockers first
+      if (a.is_release_blocker !== b.is_release_blocker) return a.is_release_blocker ? -1 : 1
       // Descending wait time (ascending requested_at)
       const reqDiff = a.requested_at.getTime() - b.requested_at.getTime()
       if (reqDiff !== 0) return reqDiff
@@ -26,5 +28,6 @@ export function rankQueue(rows: QueueRow[], me: SessionUser, now: Date): QueueIt
       flags: computeFlags(r, now),
       waitingHours: Math.floor((now.getTime() - r.requested_at.getTime()) / (1000 * 60 * 60)),
       position: i + 1,
+      isReleaseBlocker: r.is_release_blocker,
     }))
 }
