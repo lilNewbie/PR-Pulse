@@ -4,6 +4,7 @@ dist/
 *.env.local
 /docs/*
 !/docs/setup.md
+!/docs/demo-script.md
 client/src/**/*.js
 env2.txt
 archive/
