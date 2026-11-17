@@ -479,7 +479,17 @@ describe('PR Sync Service', () => {
         expect(await touches()).toHaveLength(500)
       })
 
-      it('skips bot commits and commits with no GitHub account, and stores only added or modified files', async () => {
+      it('counts a renamed file under its new path, like a push does', async () => {
+        mockCommitList([ghCommit(1)])
+        nock('https://api.github.com')
+          .get(`${REPO}/commits/s1`)
+          .query(true)
+          .reply(200, { files: [{ filename: 'src/new-name.ts', status: 'renamed' }, { filename: 'old.ts', status: 'removed' }] })
+        expect(await backfillFileTouches(repoId)).toEqual({ commits: 1, files: 1 })
+        expect(await touches()).toEqual([{ path: 'src/new-name.ts', author_login: 'alice', commit_sha: 's1' }])
+      })
+
+      it('skips bot commits and commits with no GitHub account, and never stores removed files', async () => {
         mockCommitList([ghCommit(1), ghCommit(2, 'renovate[bot]'), { ...ghCommit(3), author: null }])
         mockFiles(1)
         expect(await backfillFileTouches(repoId)).toEqual({ commits: 1, files: 1 })

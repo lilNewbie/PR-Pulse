@@ -196,6 +196,10 @@ export async function recordPushTouches(repoId: number, payload: unknown): Promi
   return insertFileTouches(repoId, touchesFromPush(payload))
 }
 
+// Files a commit added or changed. A push payload lists a renamed or copied file's new path under `added`,
+// so the backfill counts those too and both sources agree (US-11, US-15). Removed files are never touches.
+const BACKFILL_FILE_STATUSES = new Set(['added', 'modified', 'renamed', 'copied', 'changed'])
+
 export const BACKFILL_DAYS = 180
 export const BACKFILL_MAX_COMMITS = 500
 
@@ -221,7 +225,7 @@ export async function backfillFileTouches(repoId: number): Promise<{ commits: nu
       if (!login || isBot(login)) continue
       const files = await gh.getCommitFiles(token, repo.owner, repo.name, c.sha)
       const touches = files
-        .filter((f) => f.status === 'added' || f.status === 'modified')
+        .filter((f) => BACKFILL_FILE_STATUSES.has(f.status))
         .map((f) => ({
           path: f.filename,
           authorLogin: login,
