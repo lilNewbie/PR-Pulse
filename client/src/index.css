@@ -131,6 +131,18 @@ button:not(.btn-signout) {
 button:not(.btn-signout):hover:not(:disabled) { opacity: 0.85; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* A quiet inline action, e.g. "Not a good fit" on a suggestion reason. */
+button.btn-link {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0;
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  text-decoration: underline;
+}
+button.btn-link:hover:not(:disabled) { color: var(--red); opacity: 1; }
+
 input {
   background: var(--bg);
   border: 1px solid var(--border);

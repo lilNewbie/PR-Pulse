@@ -3,6 +3,7 @@ import request from 'supertest'
 import app from '../server/src/app'
 import pool from '../server/src/db/pool'
 import { encrypt } from '../server/src/lib/crypto'
+import { directoryOf } from '../server/src/db/suggestions'
 import type { SuggestionItem } from 'shared'
 
 // GitHub ids of the people in the team.
@@ -77,10 +78,10 @@ async function requestReview(prId: number, reviewerGithubId: number) {
 
 async function sessionFor(githubId: number) {
   const id = `session-${githubId}`
-  await pool.query("INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, now() + interval '1 day')", [
-    id,
-    users.get(githubId),
-  ])
+  await pool.query(
+    "INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, now() + interval '1 day') ON CONFLICT (id) DO NOTHING",
+    [id, users.get(githubId)],
+  )
   return id
 }
 
@@ -338,5 +339,141 @@ describe('US-19 load-aware suggestions', () => {
     expect(mine.reasons.map((r) => r.path)).toEqual(['src/a.ts'])
     const [hers] = await suggestionsFor(ALICE)
     expect(hers.reasons.map((r) => r.path)).toEqual(['src/b.ts'])
+  })
+})
+
+describe('US-20 POST /api/suggestions/:prId/dismiss', () => {
+  async function dismiss(githubId: number | null, prId: number | string, body: object) {
+    const req = request(app).post(`/api/suggestions/${prId}/dismiss`)
+    if (githubId !== null) req.set('Cookie', `session=${await sessionFor(githubId)}`)
+    return req.send(body)
+  }
+
+  async function feedbackRows() {
+    const { rows } = await pool.query<{ user_id: string; directory: string; dismissed_at: Date }>(
+      'SELECT user_id, directory, dismissed_at FROM suggestion_feedback ORDER BY directory',
+    )
+    return rows
+  }
+
+  beforeEach(setupTeam)
+
+  it('US-20 AC1: dismissing src/auth/session.ts stops suggestions from any src/auth file', async () => {
+    const sessionPr = await createPr(['src/auth/session.ts'])
+    await createPr(['src/auth/token.ts'])
+    const billingPr = await createPr(['src/billing/invoice.ts'])
+    for (const path of ['src/auth/session.ts', 'src/auth/token.ts', 'src/billing/invoice.ts']) {
+      await touch(path, 'me', hoursAgo(2))
+    }
+    expect(await suggestionsFor(ME)).toHaveLength(3)
+
+    const res = await dismiss(ME, sessionPr, { path: 'src/auth/session.ts' })
+    expect(res.status).toBe(204)
+    expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([billingPr])
+    expect(await feedbackRows()).toMatchObject([{ user_id: String(users.get(ME)), directory: 'src/auth' }])
+  })
+
+  it('US-20 AC1: a PR with another reason left stays, showing only that reason', async () => {
+    const prId = await createPr(['src/auth/session.ts', 'src/api/routes.ts'])
+    await touch('src/auth/session.ts', 'me', hoursAgo(1))
+    await touch('src/api/routes.ts', 'me', hoursAgo(2))
+
+    expect((await dismiss(ME, prId, { path: 'src/auth/session.ts' })).status).toBe(204)
+    const [item] = await suggestionsFor(ME)
+    expect(item.reasons.map((r) => r.path)).toEqual(['src/api/routes.ts'])
+  })
+
+  it('US-20 AC2: after my dismissal, the next eligible teammate is suggested for those files', async () => {
+    const prId = await createPr(['src/auth/session.ts'])
+    await touch('src/auth/session.ts', 'me', hoursAgo(1))
+    await touch('src/auth/session.ts', 'alice', hoursAgo(10))
+    expect(await suggestionsFor(ALICE)).toEqual([])
+
+    await dismiss(ME, prId, { path: 'src/auth/session.ts' })
+    expect(await suggestionsFor(ME)).toEqual([])
+    expect((await suggestionsFor(ALICE)).map((i) => i.id)).toEqual([prId])
+  })
+
+  it('US-20 AC3: a dismissal 31 days old no longer hides src/auth; one 29 days old still does', async () => {
+    const prId = await createPr(['src/auth/session.ts'])
+    await touch('src/auth/session.ts', 'me', hoursAgo(1))
+    await dismiss(ME, prId, { path: 'src/auth/session.ts' })
+
+    await pool.query("UPDATE suggestion_feedback SET dismissed_at = now() - interval '29 days'")
+    expect(await suggestionsFor(ME)).toEqual([])
+
+    await pool.query("UPDATE suggestion_feedback SET dismissed_at = now() - interval '31 days'")
+    expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([prId])
+  })
+
+  it('US-20 AC4: a path not in the PR, or no path, is 400 and stores nothing; an unknown PR is 404', async () => {
+    const prId = await createPr(['src/auth/session.ts'])
+
+    const wrong = await dismiss(ME, prId, { path: 'src/other.ts' })
+    expect(wrong.status).toBe(400)
+    expect(wrong.body).toEqual({ error: expect.any(String) })
+    expect((await dismiss(ME, prId, {})).status).toBe(400)
+    expect((await dismiss(ME, prId, { path: '' })).status).toBe(400)
+
+    expect((await dismiss(ME, 999999, { path: 'src/auth/session.ts' })).status).toBe(404)
+    expect((await dismiss(ME, 'abc', { path: 'src/auth/session.ts' })).status).toBe(404)
+    expect(await feedbackRows()).toEqual([])
+  })
+
+  it('US-20 AC5: PR Author gets 403, no session gets 401, a PR in a repo I cannot access gets 403', async () => {
+    const prId = await createPr(['src/a.ts'])
+    expect((await dismiss(PA, prId, { path: 'src/a.ts' })).status).toBe(403)
+    expect((await dismiss(null, prId, { path: 'src/a.ts' })).status).toBe(401)
+
+    const hiddenPr = await createPr(['src/a.ts'], { repo: hiddenRepoId })
+    const hidden = await dismiss(ME, hiddenPr, { path: 'src/a.ts' })
+    expect(hidden.status).toBe(403)
+    // Same answer whether or not the path is in the PR, so a hidden PR's files aren't revealed.
+    expect((await dismiss(ME, hiddenPr, { path: 'nope.ts' })).status).toBe(403)
+    expect(await feedbackRows()).toEqual([])
+  })
+
+  it('US-20 AC6: dismissing twice keeps one row and refreshes dismissed_at', async () => {
+    const prId = await createPr(['src/auth/session.ts', 'src/auth/token.ts'])
+    await dismiss(ME, prId, { path: 'src/auth/session.ts' })
+    await pool.query("UPDATE suggestion_feedback SET dismissed_at = now() - interval '10 days'")
+
+    expect((await dismiss(ME, prId, { path: 'src/auth/token.ts' })).status).toBe(204)
+    const rows = await feedbackRows()
+    expect(rows).toHaveLength(1)
+    expect(Date.now() - rows[0].dismissed_at.getTime()).toBeLessThan(60_000)
+  })
+
+  it('a dismissal is per repo and per user: other repos and teammates are unaffected', async () => {
+    const otherRepo = await createRepo(8003, 'other')
+    for (const id of [ME, ALICE]) await grantAccess(id, otherRepo)
+    const prId = await createPr(['src/auth/session.ts'])
+    const otherPr = await createPr(['src/auth/session.ts'], { repo: otherRepo })
+    const alicePr = await createPr(['src/auth/token.ts'])
+    await touch('src/auth/session.ts', 'me', hoursAgo(1))
+    await touch('src/auth/session.ts', 'me', hoursAgo(1), otherRepo)
+    await touch('src/auth/token.ts', 'alice', hoursAgo(1))
+
+    await dismiss(ME, prId, { path: 'src/auth/session.ts' })
+    expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([otherPr])
+    expect((await suggestionsFor(ALICE)).map((i) => i.id)).toEqual([alicePr])
+  })
+
+  it('a top-level file dismisses the repo root, which hides other top-level files but not subdirectories', async () => {
+    const prId = await createPr(['README.md', 'package.json', 'src/a.ts'])
+    for (const path of ['README.md', 'package.json', 'src/a.ts']) await touch(path, 'me', hoursAgo(1))
+
+    await dismiss(ME, prId, { path: 'README.md' })
+    expect(await feedbackRows()).toMatchObject([{ directory: '/' }])
+    const [item] = await suggestionsFor(ME)
+    expect(item.reasons.map((r) => r.path)).toEqual(['src/a.ts'])
+  })
+})
+
+describe('directoryOf', () => {
+  it('matches design-extension section 1', () => {
+    expect(directoryOf('src/auth/session.ts')).toBe('src/auth')
+    expect(directoryOf('README.md')).toBe('/')
+    expect(directoryOf('a/b/c/d.ts')).toBe('a/b/c')
   })
 })

@@ -1,4 +1,4 @@
-// Owned by Mandaar. Reviewer suggestions (US-11 design-final 5.2, US-19 design-extension 4.1). Reads only.
+// Owned by Mandaar. Reviewer suggestions (US-11 design-final 5.2; US-19, US-20 design-extension 4.1, 4.2).
 import pool from './pool'
 import type { PrRow } from './types'
 
@@ -11,11 +11,25 @@ export interface SuggestionRow extends PrRow {
   open_requests: number
 }
 
+// How long a dismissal hides a directory (design-extension 4.2).
+export const DISMISS_DAYS = 30
+
+// Directory of a path (design-extension 1): 'src/auth/session.ts' -> 'src/auth', 'README.md' -> '/'.
+// directorySql is the same rule as a SQL expression over a path column; keep the two in step.
+export function directoryOf(path: string): string {
+  if (!path.includes('/')) return '/'
+  return path.replace(/\/[^/]*$/, '') || '/'
+}
+const directorySql = (path: string) =>
+  `CASE WHEN strpos(${path}, '/') = 0 THEN '/' ELSE COALESCE(NULLIF(regexp_replace(${path}, '/[^/]*$', ''), ''), '/') END`
+
 // For each changed file of each open, non-draft PR the user can access and didn't author, the eligible touchers
 // are committers to that file who are members of the repo's team with role reviewer or lead, aren't the PR's
 // author and aren't bots (US-11 AC4, AC5; DR-03). Of the 3 most recent distinct eligible touchers, the suggested
 // reviewer is the one with the fewest open requests; ties go to the most recent (US-19, design-extension 4.1).
-// Returns the files where that reviewer is this user.
+// A toucher who dismissed the file's directory in that repo within DISMISS_DAYS isn't eligible for it, so the
+// next eligible toucher can win instead (US-20, design-extension 4.2). Returns the files where the reviewer is
+// this user.
 //
 // Open requests are counted once for everyone, in the `load` CTE. They span every connected repo, not only the
 // caller's, so every caller sees the same load for a teammate and agrees on who wins each file.
@@ -66,6 +80,13 @@ export async function listSuggestionRows(userId: number): Promise<SuggestionRow[
            AND ft.path = f.path
            AND ft.author_login NOT LIKE '%[bot]'
            AND u.github_id <> c.author_github_id
+           AND NOT EXISTS (
+             SELECT 1 FROM suggestion_feedback sf
+             WHERE sf.user_id = u.id
+               AND sf.repo_id = c.repo_id
+               AND sf.directory = ${directorySql('f.path')}
+               AND sf.dismissed_at > now() - make_interval(days => ${DISMISS_DAYS})
+           )
          GROUP BY u.id, u.github_id
          ORDER BY committed_at DESC, u.id
          LIMIT 3
@@ -80,4 +101,34 @@ export async function listSuggestionRows(userId: number): Promise<SuggestionRow[
     [userId],
   )
   return rows
+}
+
+export interface DismissTarget {
+  repo_id: string
+  accessible: boolean
+  has_path: boolean
+}
+
+// The PR's repo, whether the user can access it, and whether `path` is one of its changed files.
+// Null when the PR doesn't exist.
+export async function findDismissTarget(userId: number, prId: number, path: string): Promise<DismissTarget | null> {
+  const { rows } = await pool.query<DismissTarget>(
+    `SELECT p.repo_id,
+       EXISTS (SELECT 1 FROM repo_access ra WHERE ra.user_id = $1 AND ra.repo_id = p.repo_id) AS accessible,
+       EXISTS (SELECT 1 FROM pr_files f WHERE f.pr_id = p.id AND f.path = $3) AS has_path
+     FROM pull_requests p
+     WHERE p.id = $2`,
+    [userId, prId, path],
+  )
+  return rows[0] ?? null
+}
+
+// Stores or refreshes a dismissal (design-extension 4.2: dismissing again refreshes dismissed_at).
+export async function upsertDismissal(userId: number, repoId: number, directory: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO suggestion_feedback (user_id, repo_id, directory, dismissed_at)
+     VALUES ($1, $2, $3, now())
+     ON CONFLICT (user_id, repo_id, directory) DO UPDATE SET dismissed_at = now()`,
+    [userId, repoId, directory],
+  )
 }
