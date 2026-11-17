@@ -67,7 +67,7 @@ export interface ApiError {
   error: string
 }
 
-export interface SuggestionReason { path: string; lastCommitAt: string }
+export interface SuggestionReason { path: string; lastCommitAt: string; openRequests?: number }
 export interface SuggestionItem extends PrSummary { reasons: SuggestionReason[]; reviewRequested: boolean }
 export interface ExpertiseArea { area: string; commits: number; lastCommitAt: string }
 export interface ExpertiseResponse { repo: { id: number; fullName: string }; areas: ExpertiseArea[] }
@@ -85,3 +85,18 @@ export interface DeploymentDetail extends DeploymentSummary {
   previousDeploymentId: number | null
   prs: { number: number; title: string; authorLogin: string; mergedAt: string; url: string }[]
 }
+
+export interface ReviewerLoad {
+  login: string
+  role: Role
+  openRequests: number
+  oldestWaitHours: number | null
+  overloaded: boolean
+}
+export interface BottleneckResponse {
+  reviewers: ReviewerLoad[]
+  stalePrs: (PrSummary & { inactiveHours: number })[]
+  totals: { openPrs: number; openRequests: number; stalePrs: number }
+}
+export interface WaitingOnReviewer { login: string; waitingHours: number; openRequests: number; overloaded: boolean }
+export interface WaitingOnItem { prId: number; noReviewerRequested: boolean; reviewers: WaitingOnReviewer[] }

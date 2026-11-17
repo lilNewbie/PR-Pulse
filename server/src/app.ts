@@ -9,6 +9,7 @@ import suggestionsRouter from './modules/suggestions/router'
 import deploymentsRouter from './modules/deployments/router'
 import expertiseRouter from './modules/expertise/router'
 import teamRepoRouter from './modules/team-repo/router'
+import waitingRouter from './modules/waiting/router'
 import webhookRouter from './webhook/router'
 
 const app = express()
@@ -30,6 +31,7 @@ app.use(suggestionsRouter)
 app.use(deploymentsRouter)
 app.use(expertiseRouter)
 app.use(teamRepoRouter)
+app.use(waitingRouter)
 
 // Day 3: Authenticated PR details endpoint
 // GET /api/my-prs/:id
