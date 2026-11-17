@@ -9,6 +9,7 @@ import {
   syncRepo,
   BACKFILL_MAX_COMMITS,
 } from '../server/src/sync'
+import { computeFlags } from '../server/src/flags'
 
 const OWNER = 'pr-pulse-test'
 const NAME = 'sandbox'
@@ -185,12 +186,17 @@ describe('PR Sync Service', () => {
       expect(req.requested_at.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
     })
 
-    it('US-08 AC2: a comment on a stale PR updates last_activity_at', async () => {
+    it('US-08 AC2: a comment on a stale PR updates last_activity_at and clears the stale flag', async () => {
       await insertPr(7, { last_activity_at: hoursAgo(30) })
+      expect(computeFlags(await prRow(7), new Date()).stale).toBe(true)
+
       const commentAt = hoursAgo(0.05)
       mockPr(pull(7, { updatedAt: commentAt }), { comments: [{ created_at: hoursAgo(40) }, { created_at: commentAt }] })
       await applyEvent(repoId, 7)
-      expect((await prRow(7)).last_activity_at.toISOString()).toBe(new Date(commentAt).toISOString())
+
+      const row = await prRow(7)
+      expect(row.last_activity_at.toISOString()).toBe(new Date(commentAt).toISOString())
+      expect(computeFlags(row, new Date())).toMatchObject({ stale: false, inactiveHours: 0 })
     })
 
     it('US-08 AC2: a new commit on a stale PR updates last_activity_at', async () => {

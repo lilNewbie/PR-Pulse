@@ -106,3 +106,29 @@ export async function listConnectedRepoIds(): Promise<number[]> {
   )
   return rows.map((row) => Number(row.id))
 }
+
+export interface RepoHookRow {
+  id: number
+  owner: string
+  name: string
+  hook_id: number
+  connected_by: number | null
+}
+
+// Every repo that has a webhook on GitHub, for `npm run hooks:update`.
+// Includes repos still 'connecting': their hook already exists and must get the same events.
+export async function listReposWithHooks(): Promise<RepoHookRow[]> {
+  const { rows } = await pool.query<RepoHookRow>(
+    `SELECT id, owner, name, hook_id, connected_by
+     FROM repos
+     WHERE hook_id IS NOT NULL
+     ORDER BY id`,
+  )
+  return rows.map((row) => ({
+    id: Number(row.id),
+    owner: row.owner,
+    name: row.name,
+    hook_id: Number(row.hook_id),
+    connected_by: row.connected_by === null ? null : Number(row.connected_by),
+  }))
+}
