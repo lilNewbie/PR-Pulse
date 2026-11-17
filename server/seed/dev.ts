@@ -639,12 +639,13 @@ export async function seedDevelopmentData(): Promise<void> {
     // ========================================
 
     // Each deployment's date follows the merge of any linked PR.
-    // A failed deploy still has linked PRs. The first production deploy and
-    // the final staging deploy deliberately have zero linked PRs.
+    // A failed deploy still has linked PRs. The first staging deploy,
+    // first production deploy, and final staging deploy have no linked PRs.
+    // Mark demo rows as already linked so scheduled sync does not retry them.
     const deployments = [
       {
         sha: 'a'.repeat(40), environment: 'staging', status: 'success',
-        source: 'manual', hours: 36, prNumbers: [12],
+        source: 'manual', hours: 36, prNumbers: [],
       },
       {
         sha: 'b'.repeat(40), environment: 'staging', status: 'failed',
@@ -667,8 +668,8 @@ export async function seedDevelopmentData(): Promise<void> {
     for (const deployment of deployments) {
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO deployments
-           (repo_id, sha, environment, status, source, recorded_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (repo_id, sha, environment, status, source, recorded_by, created_at, linked_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now())
          RETURNING id`,
         [
           repoIds.sandbox,

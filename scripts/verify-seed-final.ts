@@ -65,9 +65,10 @@ async function verify(): Promise<void> {
     environment: 'staging' | 'production'
     status: 'success' | 'failed' | 'pending'
     source: 'manual' | 'webhook'
+    linked_at: Date | null
     pr_count: number
   }>(`
-    SELECT d.environment, d.status, d.source, COUNT(dp.pr_id)::integer AS pr_count
+    SELECT d.environment, d.status, d.source, d.linked_at, COUNT(dp.pr_id)::integer AS pr_count
     FROM deployments d
     JOIN repos r ON r.id = d.repo_id JOIN teams t ON t.id = r.team_id
     LEFT JOIN deployment_prs dp ON dp.deployment_id = d.id
@@ -87,12 +88,13 @@ async function verify(): Promise<void> {
   assert.equal(blockers, 1, 'Expected one open release blocker')
   assert.equal(changedFiles, 4, 'Expected four changed-file fixtures')
   assert.equal(touches, 6, 'Expected six file-touch fixtures')
-  assert.equal(links, 4, 'Expected four deployment-to-PR links')
+  assert.equal(links, 3, 'Expected three deployment-to-PR links')
   assert.equal(badLinks, 0, 'All deployment links must point to merged PRs in the same repo')
+  assert.ok(deploymentRows.every((r) => r.linked_at !== null), 'All seeded deployments must be marked as linked')
   assert.deepEqual(deploymentRows.map((r) => ({
     environment: r.environment, status: r.status, source: r.source, prCount: Number(r.pr_count),
   })), [
-    { environment: 'staging', status: 'success', source: 'manual', prCount: 1 },
+    { environment: 'staging', status: 'success', source: 'manual', prCount: 0 },
     { environment: 'staging', status: 'failed', source: 'webhook', prCount: 1 },
     { environment: 'staging', status: 'success', source: 'webhook', prCount: 2 },
     { environment: 'production', status: 'success', source: 'manual', prCount: 0 },
