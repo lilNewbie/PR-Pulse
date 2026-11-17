@@ -1,7 +1,8 @@
 // Owned by Mandaar. Decides which PRs a verified delivery affects and hands them to the PR Sync Service.
 import { z } from 'zod'
-import { applyEvent } from '../sync'
+import { applyEvent, recordPushTouches } from '../sync'
 import { listOpenPrNumbersByBaseRef } from '../db/prWrites'
+import { recordDeploymentEvent } from '../modules/deployments'
 
 const prEvent = z.object({ pull_request: z.object({ number: z.number().int().positive() }) })
 const issueComment = z.object({
@@ -10,6 +11,19 @@ const issueComment = z.object({
 const push = z.object({ ref: z.string(), deleted: z.boolean().optional() })
 
 const BRANCH_PREFIX = 'refs/heads/'
+
+const deploymentStatus = z.object({
+  deployment: z.object({ environment: z.string() }),
+})
+
+// Only these environments are tracked (US-12, design-final section 2). Anything else is ignored.
+const TRACKED_ENVIRONMENTS = new Set(['staging', 'production'])
+
+// Pure: whether a deployment_status delivery is for a tracked environment.
+export function isTrackedDeployment(payload: unknown): boolean {
+  const p = deploymentStatus.safeParse(payload)
+  return p.success && TRACKED_ENVIRONMENTS.has(p.data.deployment.environment)
+}
 
 export type Target = { kind: 'pr'; prNumber: number } | { kind: 'base'; baseRef: string } | null
 
@@ -38,6 +52,16 @@ export function targetOf(event: string, payload: unknown): Target {
 
 // Runs after the 202 has been sent. A failing PR doesn't stop the others; the next sync repairs it.
 export async function processDelivery(repoId: number, event: string, payload: unknown): Promise<void> {
+  if (event === 'deployment_status') {
+    if (isTrackedDeployment(payload)) await recordDeploymentEvent(repoId, payload)
+    return
+  }
+  if (event === 'push') {
+    // Who changed which files on the default branch (US-11, US-15). Independent of the PR re-checks below.
+    await recordPushTouches(repoId, payload).catch((err: unknown) => {
+      console.error(`webhook: file touches failed for repo ${repoId}: ${err instanceof Error ? err.message : err}`)
+    })
+  }
   const target = targetOf(event, payload)
   if (!target) return
   const prNumbers =

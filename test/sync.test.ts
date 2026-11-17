@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import nock from 'nock'
 import pool from '../server/src/db/pool'
 import { encrypt } from '../server/src/lib/crypto'
-import { applyEvent, syncRepo } from '../server/src/sync'
+import {
+  applyEvent,
+  backfillFileTouches,
+  recordPushTouches,
+  syncRepo,
+  BACKFILL_MAX_COMMITS,
+} from '../server/src/sync'
 
 const OWNER = 'pr-pulse-test'
 const NAME = 'sandbox'
@@ -21,6 +27,7 @@ interface PullOpts {
   updatedAt?: string
   mergeable?: boolean | null
   requested?: { id: number; login: string }[]
+  labels?: string[]
 }
 
 function pull(n: number, o: PullOpts = {}) {
@@ -39,6 +46,7 @@ function pull(n: number, o: PullOpts = {}) {
     additions: 10,
     deletions: 5,
     requested_reviewers: o.requested ?? [],
+    labels: (o.labels ?? []).map((name) => ({ name })),
     base: { ref: 'main' },
     head: { sha: `sha${n}` },
   }
@@ -49,6 +57,7 @@ interface MockOpts {
   comments?: { created_at: string }[]
   commitDate?: string
   behindBy?: number
+  files?: string[]
 }
 
 // Mocks every GitHub call fetchSnapshot makes for one PR.
@@ -58,6 +67,7 @@ function mockPr(p: ReturnType<typeof pull>, o: MockOpts = {}) {
   api.get(`${REPO}/pulls/${p.number}/reviews`).query(true).reply(200, o.reviews ?? [])
   if (p.state === 'open') {
     api.get(`${REPO}/compare/main...${p.head.sha}`).reply(200, { behind_by: o.behindBy ?? 0 })
+    api.get(`${REPO}/pulls/${p.number}/files`).query(true).reply(200, (o.files ?? []).map((filename) => ({ filename })))
   }
   api.get(`${REPO}/commits/${p.head.sha}`).reply(200, { commit: { committer: { date: o.commitDate ?? hoursAgo(30) } } })
   api.get(`${REPO}/issues/${p.number}/comments`).query(true).reply(200, o.comments ?? [])
@@ -111,7 +121,7 @@ describe('PR Sync Service', () => {
     nock.disableNetConnect()
     nock.enableNetConnect(/127\.0\.0\.1|localhost/)
     await pool.query(
-      'TRUNCATE TABLE webhook_events, reviews, review_requests, pull_requests, repos, members, users, teams RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE webhook_events, file_touches, pr_files, reviews, review_requests, pull_requests, repos, members, users, teams RESTART IDENTITY CASCADE',
     )
     const {
       rows: [team],
@@ -226,6 +236,7 @@ describe('PR Sync Service', () => {
       mockList([p1, p2])
       mockPr(p1)
       mockPr(p2)
+      nock('https://api.github.com').get(`${REPO}/commits`).query(true).reply(200, []) // backfill: no history
       const result = await syncRepo(repoId, 'initial')
       expect(result).toMatchObject({ status: 'ok', prsUpserted: 2, prsClosed: 0 })
       expect(typeof result.lastSyncedAt).toBe('string')
@@ -292,6 +303,218 @@ describe('PR Sync Service', () => {
       mockPr(pull(1))
       mockPr(pull(2))
       expect(await syncRepo(repoId, 'scheduled')).toMatchObject({ status: 'ok', prsUpserted: 2 })
+    })
+  })
+
+  describe('US-04: release-blocker label', () => {
+    it('label added then removed: is_release_blocker true, then false', async () => {
+      mockPr(pull(7, { labels: ['bug', 'release-blocker'], updatedAt: hoursAgo(2) }))
+      await applyEvent(repoId, 7)
+      expect((await prRow(7)).is_release_blocker).toBe(true)
+
+      mockPr(pull(7, { labels: ['bug'], updatedAt: hoursAgo(1) }))
+      await applyEvent(repoId, 7)
+      expect((await prRow(7)).is_release_blocker).toBe(false)
+    })
+
+    it('the scheduled sync sets it too', async () => {
+      const p = pull(1, { labels: ['release-blocker'], updatedAt: hoursAgo(1) })
+      mockList([p])
+      mockPr(p)
+      await syncRepo(repoId, 'scheduled')
+      expect((await prRow(1)).is_release_blocker).toBe(true)
+    })
+  })
+
+  describe('US-11: changed files (pr_files)', () => {
+    async function files(n: number): Promise<string[]> {
+      const { rows } = await pool.query<{ path: string }>(
+        `SELECT f.path FROM pr_files f JOIN pull_requests p ON p.id = f.pr_id
+         WHERE p.repo_id = $1 AND p.number = $2 ORDER BY f.path`,
+        [repoId, n],
+      )
+      return rows.map((r) => r.path)
+    }
+
+    it('stores the files a PR changes, and replaces them after a new push', async () => {
+      mockPr(pull(7, { updatedAt: hoursAgo(2) }), { files: ['src/a.ts', 'src/b.ts'] })
+      await applyEvent(repoId, 7)
+      expect(await files(7)).toEqual(['src/a.ts', 'src/b.ts'])
+
+      mockPr(pull(7, { updatedAt: hoursAgo(1) }), { files: ['src/b.ts', 'src/c.ts'] })
+      await applyEvent(repoId, 7)
+      expect(await files(7)).toEqual(['src/b.ts', 'src/c.ts'])
+    })
+
+    it('follows every page of the file list, capped at GitHub\'s 3,000 files', async () => {
+      const p = pull(7)
+      const api = nock('https://api.github.com')
+      api.get(`${REPO}/pulls/7`).reply(200, p)
+      api.get(`${REPO}/pulls/7/reviews`).query(true).reply(200, [])
+      api.get(`${REPO}/compare/main...sha7`).reply(200, { behind_by: 0 })
+      api.get(`${REPO}/commits/sha7`).reply(200, { commit: { committer: { date: hoursAgo(30) } } })
+      api.get(`${REPO}/issues/7/comments`).query(true).reply(200, [])
+      // 31 pages of 100 are on offer; only the first 30 (3,000 files) are read.
+      for (let page = 1; page <= 31; page++) {
+        const link = `<https://api.github.com/repositories/900001/pulls/7/files?per_page=100&page=${page + 1}>; rel="next"`
+        const body = Array.from({ length: 100 }, (_, i) => ({ filename: `f/${page}-${i}.ts` }))
+        if (page === 1) api.get(`${REPO}/pulls/7/files`).query({ per_page: '100' }).reply(200, body, { link })
+        else api.get('/repositories/900001/pulls/7/files').query({ per_page: '100', page: String(page) }).reply(200, body, { link })
+      }
+      await applyEvent(repoId, 7)
+      const stored = await files(7)
+      expect(stored).toHaveLength(3000)
+      expect(stored).toContain('f/30-99.ts')
+      expect(stored).not.toContain('f/31-0.ts')
+      expect(api.pendingMocks()).toEqual([expect.stringContaining('/repositories/900001/pulls/7/files')]) // page 31 never requested
+    })
+
+    it('a closed PR keeps its stored files without fetching them', async () => {
+      mockPr(pull(7, { updatedAt: hoursAgo(2) }), { files: ['src/a.ts'] })
+      await applyEvent(repoId, 7)
+      mockPr(pull(7, { state: 'closed', updatedAt: hoursAgo(1) })) // no files mock: a request would fail
+      await applyEvent(repoId, 7)
+      expect((await prRow(7)).state).toBe('closed')
+      expect(await files(7)).toEqual(['src/a.ts'])
+    })
+  })
+
+  describe('US-11, US-15: file touches', () => {
+    async function touches() {
+      const { rows } = await pool.query<{ path: string; author_login: string; commit_sha: string }>(
+        'SELECT path, author_login, commit_sha FROM file_touches WHERE repo_id = $1 ORDER BY commit_sha, path',
+        [repoId],
+      )
+      return rows
+    }
+
+    const commit = (id: string, username: string | undefined, added: string[], modified: string[], removed: string[] = []) => ({
+      id,
+      timestamp: hoursAgo(1),
+      author: { name: 'Someone', email: 'someone@example.com', ...(username ? { username } : {}) },
+      added,
+      modified,
+      removed,
+    })
+    const push = (ref: string, commits: object[]) => ({
+      ref,
+      repository: { id: 900001, default_branch: 'main' },
+      commits,
+    })
+
+    it('a push to the default branch stores touches for added and modified files', async () => {
+      const n = await recordPushTouches(
+        repoId,
+        push('refs/heads/main', [commit('c1', 'alice', ['src/new.ts'], ['src/old.ts'], ['src/gone.ts'])]),
+      )
+      expect(n).toBe(2)
+      expect(await touches()).toEqual([
+        { path: 'src/new.ts', author_login: 'alice', commit_sha: 'c1' },
+        { path: 'src/old.ts', author_login: 'alice', commit_sha: 'c1' },
+      ])
+    })
+
+    it('a bot commit, or one without a GitHub username, stores nothing', async () => {
+      await recordPushTouches(
+        repoId,
+        push('refs/heads/main', [commit('c1', 'dependabot[bot]', ['package.json'], []), commit('c2', undefined, ['a.ts'], [])]),
+      )
+      expect(await touches()).toEqual([])
+    })
+
+    it('a push to another branch stores nothing', async () => {
+      await recordPushTouches(repoId, push('refs/heads/feature', [commit('c1', 'alice', ['a.ts'], [])]))
+      expect(await touches()).toEqual([])
+    })
+
+    it('the same push delivered twice stores each touch once', async () => {
+      const p = push('refs/heads/main', [commit('c1', 'alice', ['a.ts'], [])])
+      expect(await recordPushTouches(repoId, p)).toBe(1)
+      expect(await recordPushTouches(repoId, p)).toBe(0)
+      expect(await touches()).toHaveLength(1)
+    })
+
+    describe('backfillFileTouches', () => {
+      const ghCommit = (i: number, login = 'alice') => ({
+        sha: `s${i}`,
+        author: { login },
+        commit: { committer: { date: new Date(Date.now() - i * 60_000).toISOString() } },
+      })
+
+      // Lists `commits` in pages of 100, like GitHub, plus an extra page that must never be read.
+      function mockCommitList(commits: object[], extraPage = false) {
+        const api = nock('https://api.github.com')
+        const pages = Math.ceil(commits.length / 100) + (extraPage ? 1 : 0)
+        for (let page = 1; page <= pages; page++) {
+          const body = commits.slice((page - 1) * 100, page * 100)
+          const headers: Record<string, string> =
+            page < pages ? { link: `<https://api.github.com/repositories/900001/commits?per_page=100&page=${page + 1}>; rel="next"` } : {}
+          if (page === 1) api.get(`${REPO}/commits`).query((q) => !q.page && !q.until).reply(200, body, headers)
+          else api.get('/repositories/900001/commits').query((q) => q.page === String(page)).reply(200, body.length ? body : [ghCommit(9999)], headers)
+        }
+        return api
+      }
+
+      const mockFiles = (times: number) =>
+        nock('https://api.github.com')
+          .get(/\/repos\/pr-pulse-test\/sandbox\/commits\/s\d+/)
+          .times(times)
+          .reply(200, (uri: string) => {
+            const sha = uri.match(/commits\/(s\d+)/)![1]
+            return { files: [{ filename: `${sha}.ts`, status: 'modified' }, { filename: 'gone.ts', status: 'removed' }] }
+          })
+
+      it('stops at 500 commits', async () => {
+        const list = mockCommitList(Array.from({ length: 500 }, (_, i) => ghCommit(i)), true)
+        mockFiles(500)
+        const result = await backfillFileTouches(repoId)
+        expect(result).toEqual({ commits: BACKFILL_MAX_COMMITS, files: 500 })
+        expect(list.pendingMocks()).toHaveLength(1) // page 6 never requested
+        expect(await touches()).toHaveLength(500)
+      })
+
+      it('skips bot commits and commits with no GitHub account, and stores only added or modified files', async () => {
+        mockCommitList([ghCommit(1), ghCommit(2, 'renovate[bot]'), { ...ghCommit(3), author: null }])
+        mockFiles(1)
+        expect(await backfillFileTouches(repoId)).toEqual({ commits: 1, files: 1 })
+        expect(await touches()).toEqual([{ path: 's1.ts', author_login: 'alice', commit_sha: 's1' }])
+      })
+
+      it('on a rate limit it keeps what it stored, sets retry_after, and the next run resumes without duplicates', async () => {
+        const reset = Math.floor(Date.now() / 1000) + 3600
+        mockCommitList([ghCommit(1), ghCommit(2), ghCommit(3)])
+        mockFiles(2) // s1 and s2
+        nock('https://api.github.com')
+          .get(`${REPO}/commits/s3`)
+          .query(true)
+          .reply(403, { message: 'API rate limit exceeded' }, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) })
+
+        expect(await backfillFileTouches(repoId)).toEqual({ commits: 2, files: 2 })
+        expect((await repoRow()).retry_after.getTime()).toBe(reset * 1000)
+        expect((await repoRow()).sync_status).toBe('ok') // PR data is fine; only the backfill is waiting
+
+        // Before retry_after: no GitHub calls at all.
+        nock.cleanAll()
+        expect(await backfillFileTouches(repoId)).toEqual({ commits: 0, files: 0 })
+
+        // After the reset: resumes from the oldest stored commit (s2), which GitHub lists again.
+        await pool.query('UPDATE repos SET retry_after = now() - interval \'1 second\' WHERE id = $1', [repoId])
+        nock('https://api.github.com')
+          .get(`${REPO}/commits`)
+          .query((q) => typeof q.until === 'string')
+          .reply(200, [ghCommit(2), ghCommit(3)])
+        mockFiles(2)
+        expect(await backfillFileTouches(repoId)).toEqual({ commits: 2, files: 1 })
+        expect((await touches()).map((t) => t.commit_sha)).toEqual(['s1', 's2', 's3'])
+      })
+
+      it('the initial sync runs the backfill', async () => {
+        mockList([])
+        mockCommitList([ghCommit(1)])
+        mockFiles(1)
+        expect((await syncRepo(repoId, 'initial')).status).toBe('ok')
+        expect(await touches()).toEqual([{ path: 's1.ts', author_login: 'alice', commit_sha: 's1' }])
+      })
     })
   })
 })
