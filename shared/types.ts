@@ -65,3 +65,22 @@ export interface Me {
 export interface ApiError {
   error: string
 }
+
+export interface SuggestionReason { path: string; lastCommitAt: string }
+export interface SuggestionItem extends PrSummary { reasons: SuggestionReason[]; reviewRequested: boolean }
+export interface ExpertiseArea { area: string; commits: number; lastCommitAt: string }
+export interface ExpertiseResponse { repo: { id: number; fullName: string }; areas: ExpertiseArea[] }
+export type DeploymentStatus = 'pending' | 'success' | 'failed'
+export interface DeploymentSummary {
+  id: number
+  sha: string
+  environment: 'staging' | 'production'
+  status: DeploymentStatus
+  source: 'manual' | 'webhook'
+  createdAt: string
+  prCount: number
+}
+export interface DeploymentDetail extends DeploymentSummary {
+  previousDeploymentId: number | null
+  prs: { number: number; title: string; authorLogin: string; mergedAt: string; url: string }[]
+}

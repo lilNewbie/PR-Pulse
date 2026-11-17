@@ -6,3 +6,4 @@ dist/
 !/docs/setup.md
 client/src/**/*.js
 env2.txt
+archive/
