@@ -5,6 +5,7 @@ import path from 'path'
 import authRouter from './modules/auth/router'
 import prsRouter from './modules/prs/router'
 import queueRouter from './modules/queue/router'
+import suggestionsRouter from './modules/suggestions/router'
 import teamRepoRouter from './modules/team-repo/router'
 import webhookRouter from './webhook/router'
 
@@ -23,6 +24,7 @@ app.get('/health', (_req, res) => {
 
 app.use(authRouter)
 app.use(queueRouter)
+app.use(suggestionsRouter)
 app.use(teamRepoRouter)
 
 // Day 3: Authenticated PR details endpoint
