@@ -1,4 +1,4 @@
-// Owned by Mandaar. Suggestions module (US-11, design-final 4 and 5.2).
+// Owned by Mandaar. Suggestions module (US-11, design-final 4 and 5.2; US-19, design-extension 4.1).
 import type { SuggestionItem } from 'shared'
 import { listSuggestionRows, type SuggestionRow } from '../../db/suggestions'
 import { computeFlags } from '../../flags'
@@ -7,11 +7,11 @@ export const MAX_REASONS = 3
 
 // Pure: one item per PR, with at most 3 reasons, newest first. PRs are ordered by their newest reason.
 export function groupSuggestions(rows: SuggestionRow[], now: Date): SuggestionItem[] {
-  const byPr = new Map<number, { row: SuggestionRow; reasons: { path: string; at: Date }[] }>()
+  const byPr = new Map<number, { row: SuggestionRow; reasons: { path: string; at: Date; openRequests: number }[] }>()
   for (const row of rows) {
     const id = Number(row.id)
     const entry = byPr.get(id) ?? { row, reasons: [] }
-    entry.reasons.push({ path: row.path, at: row.last_commit_at })
+    entry.reasons.push({ path: row.path, at: row.last_commit_at, openRequests: Number(row.open_requests) })
     byPr.set(id, entry)
   }
 
@@ -32,7 +32,7 @@ export function groupSuggestions(rows: SuggestionRow[], now: Date): SuggestionIt
       isDraft: row.is_draft,
       linesChanged: row.lines_changed,
       flags: computeFlags(row, now),
-      reasons: reasons.map((r) => ({ path: r.path, lastCommitAt: r.at.toISOString() })),
+      reasons: reasons.map((r) => ({ path: r.path, lastCommitAt: r.at.toISOString(), openRequests: r.openRequests })),
       reviewRequested: row.review_requested,
     }))
 }
