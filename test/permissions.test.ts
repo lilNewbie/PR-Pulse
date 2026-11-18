@@ -247,9 +247,7 @@ describe('Day 6 permission matrix', () => {
     }
   })
 
-  // US-20 has not landed on main (its earlier PR was closed without merge).
-  // Enable this permission test when Mandaar merges the dismiss route.
-  it.skip('US-20 permission matrix: POST /api/suggestions/:prId/dismiss', async () => {
+  it('US-20 permission matrix: POST /api/suggestions/:prId/dismiss', async () => {
     expect((await request(app).post('/api/suggestions/1/dismiss').send({ path: 'src/x.ts' })).status).toBe(401)
     const authorRes = await request(app).post('/api/suggestions/1/dismiss')
       .set('Cookie', `session=${users.pr_author.sessionId}`)
