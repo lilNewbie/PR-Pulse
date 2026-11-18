@@ -1,6 +1,12 @@
-// Owned by Mandaar. Suggestions module (US-11, design-final 4 and 5.2; US-19, design-extension 4.1).
+// Owned by Mandaar. Suggestions module (US-11, design-final 4 and 5.2; US-19, US-20, design-extension 4.1, 4.2).
 import type { SuggestionItem } from 'shared'
-import { listSuggestionRows, type SuggestionRow } from '../../db/suggestions'
+import {
+  directoryOf,
+  findDismissTarget,
+  listSuggestionRows,
+  upsertDismissal,
+  type SuggestionRow,
+} from '../../db/suggestions'
 import { computeFlags } from '../../flags'
 
 export const MAX_REASONS = 3
@@ -39,4 +45,17 @@ export function groupSuggestions(rows: SuggestionRow[], now: Date): SuggestionIt
 
 export async function getSuggestions(userId: number, now = new Date()): Promise<SuggestionItem[]> {
   return groupSuggestions(await listSuggestionRows(userId), now)
+}
+
+export type DismissResult = 'dismissed' | 'not_found' | 'forbidden' | 'bad_path'
+
+// US-20: hide the directory of `path` from my suggestions in the PR's repo. Checks run in this order so a PR
+// in a repo I can't access says nothing about its files.
+export async function dismissSuggestion(userId: number, prId: number, path: string): Promise<DismissResult> {
+  const target = await findDismissTarget(userId, prId, path)
+  if (!target) return 'not_found'
+  if (!target.accessible) return 'forbidden'
+  if (!target.has_path) return 'bad_path'
+  await upsertDismissal(userId, Number(target.repo_id), directoryOf(path))
+  return 'dismissed'
 }
