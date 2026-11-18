@@ -354,6 +354,7 @@ export function InsightsView({ data }: { data: InsightsData }) {
 
       {/* ── KPI row ── */}
       <div className="dash-kpi-row">
+        {/* Lead-only: team-wide counts from bottlenecks */}
         {bottlenecks && (
           <KpiCard
             icon="⬡"
@@ -361,24 +362,6 @@ export function InsightsView({ data }: { data: InsightsData }) {
             label="Open PRs"
             value={String(bottlenecks.totals.openPrs)}
             note={`${bottlenecks.totals.openRequests} open requests`}
-          />
-        )}
-        {kpis.waitingOnMe !== null && (
-          <KpiCard
-            icon="⏳"
-            iconBg="rgba(210,153,34,0.18)"
-            label="Waiting on my review"
-            value={String(kpis.waitingOnMe)}
-            note={kpis.longestWaitHours !== null ? `Longest: ${kpis.longestWaitHours}h` : undefined}
-          />
-        )}
-        {(kpis.myStalePrs !== null || bottlenecks) && (
-          <KpiCard
-            icon="⚠"
-            iconBg="rgba(248,81,73,0.18)"
-            label="Stale PRs"
-            value={String(bottlenecks ? bottlenecks.totals.stalePrs : (kpis.myStalePrs ?? '—'))}
-            note={bottlenecks ? 'across your repos' : 'in my open PRs'}
           />
         )}
         {overloadedCount !== null && (
@@ -390,22 +373,54 @@ export function InsightsView({ data }: { data: InsightsData }) {
             note="≥4 open requests"
           />
         )}
-        {overloadedCount === null && kpis.releaseBlockers !== null && (
+        {/* Personal metrics (all roles) */}
+        {kpis.waitingOnMe !== null && (
+          <KpiCard
+            icon="⏳"
+            iconBg="rgba(210,153,34,0.18)"
+            label="Waiting on my review"
+            value={String(kpis.waitingOnMe)}
+          />
+        )}
+        {kpis.longestWaitHours !== null && (
+          <KpiCard
+            icon="⏱"
+            iconBg="rgba(210,153,34,0.1)"
+            label="Longest wait"
+            value={`${kpis.longestWaitHours}h`}
+          />
+        )}
+        {kpis.releaseBlockers !== null && (
           <KpiCard
             icon="🔒"
             iconBg="rgba(248,81,73,0.18)"
-            label="Release blockers"
+            label="Release blockers in my queue"
             value={String(kpis.releaseBlockers)}
-            note="in my review queue"
+          />
+        )}
+        {kpis.myOpenPrs !== null && (
+          <KpiCard
+            icon="◎"
+            iconBg="rgba(57,135,229,0.12)"
+            label="My open PRs"
+            value={String(kpis.myOpenPrs)}
+          />
+        )}
+        {kpis.myStalePrs !== null && (
+          <KpiCard
+            icon="⚠"
+            iconBg="rgba(248,81,73,0.18)"
+            label="My stale PRs"
+            value={String(kpis.myStalePrs)}
           />
         )}
         {kpis.deploys !== null && (
           <KpiCard
             icon="🚀"
             iconBg="rgba(63,185,80,0.18)"
-            label="Deploys (14 days)"
+            label="Deploys, last 14 days"
             value={String(kpis.deploys)}
-            note={kpis.failedDeploys ? `${kpis.failedDeploys} failed` : 'all succeeded'}
+            note={kpis.failedDeploys ? `${kpis.failedDeploys} failed` : undefined}
           />
         )}
       </div>
@@ -413,7 +428,7 @@ export function InsightsView({ data }: { data: InsightsData }) {
       {/* ── Charts row ── */}
       <div className="dash-charts-row">
         {data.deployDays !== null && (
-          <ChartCard title="Deploy activity" sub="Last 14 days (UTC), by status">
+          <ChartCard title="Deployments per day" sub="Last 14 days (UTC), by status">
             <DeployChart days={data.deployDays} />
           </ChartCard>
         )}
@@ -426,7 +441,7 @@ export function InsightsView({ data }: { data: InsightsData }) {
           </ChartCard>
         )}
         {data.queue !== null && (
-          <ChartCard title="Queue by wait time" sub="PRs waiting on my review, by hours since the request">
+          <ChartCard title="Review queue by wait time" sub="PRs waiting on my review, by hours since the request">
             <CountChart rows={waitBuckets(data.queue)} unit="PRs" />
           </ChartCard>
         )}

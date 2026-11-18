@@ -152,6 +152,7 @@ describe('Insights page', () => {
           queue: [queued(1, 5), queued(2, 80, { isReleaseBlocker: true })],
           myPrs: [pr(3, {}, { stale: true })],
           deployDays: deploysPerDay([deploy(1, '2026-11-18T01:00:00Z', 'failed')], NOW),
+          bottlenecks: null,
           warnings: [],
         }}
       />,
@@ -240,6 +241,7 @@ describe('Insights page', () => {
     respond({
       '/api/my-prs': { items: [] },
       '/api/queue': { items: [], lastSyncedAt: null, syncWarning: false },
+      '/api/team/bottlenecks': { reviewers: [], stalePrs: [], totals: { openPrs: 0, openRequests: 0, stalePrs: 0 } },
     })
     render(<MemoryRouter><Insights /></MemoryRouter>)
 
