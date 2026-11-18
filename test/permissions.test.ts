@@ -224,5 +224,43 @@ describe('Day 6 permission matrix', () => {
     // Body must contain only the error field — no PR data leaked
     expect(res.body).toEqual({ error: "You don't have access to this repository" })
   })
+
+  it('US-18 permission matrix: only Lead can GET /api/team/bottlenecks', async () => {
+    expect((await request(app).get('/api/team/bottlenecks')).status).toBe(401)
+    for (const role of ['pr_author', 'reviewer'] as const) {
+      const res = await request(app).get('/api/team/bottlenecks')
+        .set('Cookie', `session=${users[role].sessionId}`)
+      expect(res.status).toBe(403)
+    }
+    const leadRes = await request(app).get('/api/team/bottlenecks')
+      .set('Cookie', `session=${users.lead.sessionId}`)
+    expect(leadRes.status).toBe(200)
+    expect(leadRes.body).toHaveProperty('totals')
+  })
+
+  it('US-21 permission matrix: any signed-in role can GET /api/my-prs/waiting', async () => {
+    expect((await request(app).get('/api/my-prs/waiting')).status).toBe(401)
+    for (const role of ['pr_author', 'reviewer', 'lead'] as const) {
+      const res = await request(app).get('/api/my-prs/waiting')
+        .set('Cookie', `session=${users[role].sessionId}`)
+      expect(res.status).toBe(200)
+    }
+  })
+
+  // US-20 has not landed on main (its earlier PR was closed without merge).
+  // Enable this permission test when Mandaar merges the dismiss route.
+  it.skip('US-20 permission matrix: POST /api/suggestions/:prId/dismiss', async () => {
+    expect((await request(app).post('/api/suggestions/1/dismiss').send({ path: 'src/x.ts' })).status).toBe(401)
+    const authorRes = await request(app).post('/api/suggestions/1/dismiss')
+      .set('Cookie', `session=${users.pr_author.sessionId}`)
+      .send({ path: 'src/x.ts' })
+    expect(authorRes.status).toBe(403)
+    for (const role of ['reviewer', 'lead'] as const) {
+      const res = await request(app).post('/api/suggestions/1/dismiss')
+        .set('Cookie', `session=${users[role].sessionId}`)
+        .send({})
+      expect(res.status).toBe(400) // authorized, but path is missing
+    }
+  })
 })
 
