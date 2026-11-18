@@ -11,43 +11,58 @@ type State =
   | { status: 'ok'; items: PrSummary[] }
   | { status: 'error'; message: string }
 
-type Tone = 'warn' | 'danger' | 'muted'
+type Tone = 'warn' | 'danger' | 'muted' | 'info'
 
 const TONE_CLASS: Record<Tone, string> = {
   warn:   'badge badge-warn',
   danger: 'badge badge-danger',
   muted:  'badge badge-muted',
+  info:   'badge badge-info',
 }
 
 function Badge({ tone, children }: { tone: Tone; children: string }) {
   return <span className={TONE_CLASS[tone]}>{children}</span>
 }
 
-// The badges for one PR, in the order: stale, conflict, behind (US-08, US-09).
-export function flagBadges(flags: Flags): { tone: Tone; label: string }[] {
+function sizeLabel(lines: number): string {
+  if (lines >= 500) return `XL · ${lines} lines`
+  if (lines >= 200) return `L · ${lines} lines`
+  if (lines >= 50)  return `M · ${lines} lines`
+  return `S · ${lines} lines`
+}
+
+function sizeTone(lines: number): Tone {
+  if (lines >= 500) return 'danger'
+  if (lines >= 200) return 'warn'
+  return 'muted'
+}
+
+// The badges for one PR, in the order: draft, stale, conflict, behind, size (US-08, US-09).
+export function flagBadges(flags: Flags, isDraft: boolean, linesChanged: number): { tone: Tone; label: string }[] {
   const badges: { tone: Tone; label: string }[] = []
+  if (isDraft) badges.push({ tone: 'muted', label: 'Draft' })
   if (flags.stale) badges.push({ tone: 'warn', label: `Stale · ${flags.inactiveHours}h inactive` })
   if (flags.conflict === 'yes') badges.push({ tone: 'danger', label: 'Merge conflict' })
   if (flags.conflict === 'checking') badges.push({ tone: 'muted', label: 'Checking…' })
   if (flags.behindBy > 0) badges.push({ tone: 'warn', label: `Behind main by ${flags.behindBy}` })
+  badges.push({ tone: sizeTone(linesChanged), label: sizeLabel(linesChanged) })
   return badges
 }
 
 function PrRow({ pr }: { pr: PrSummary }) {
-  const badges = flagBadges(pr.flags)
+  const badges = flagBadges(pr.flags, pr.isDraft, pr.linesChanged)
   return (
     <li className="pr-item">
       <div className="pr-title">
         <a href={pr.url} target="_blank" rel="noreferrer">{pr.title}</a>
+        <span className="pr-external-icon" aria-hidden>↗</span>
       </div>
       <div className="pr-meta">
-        {pr.repo} #{pr.number}{pr.isDraft ? ' · Draft' : ''} · {pr.linesChanged} lines
+        {pr.repo} #{pr.number}
       </div>
-      {badges.length > 0 && (
-        <div className="pr-badges">
-          {badges.map((b) => <Badge key={b.label} tone={b.tone}>{b.label}</Badge>)}
-        </div>
-      )}
+      <div className="pr-badges">
+        {badges.map((b) => <Badge key={b.label} tone={b.tone}>{b.label}</Badge>)}
+      </div>
       {/* US-21: who this PR is waiting on (Alan's component; drafts render nothing). */}
       <WaitingOn pr={pr} />
     </li>
