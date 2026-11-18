@@ -6,6 +6,7 @@ import Deployments from './pages/Deployments'
 import DeploymentDetail from './pages/DeploymentDetail'
 import Expertise from './pages/Expertise'
 import Team, { TeamNavLink } from './pages/Team'
+import Dashboard from './pages/Dashboard'
 import SignIn from './pages/SignIn'
 import { useMe } from './hooks/useMe'
 import { apiFetch } from './api/client'
@@ -72,6 +73,9 @@ export default function App() {
                   <NavLink to="/expertise" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
                     Expertise
                   </NavLink>
+                  <NavLink to="/dashboard" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+                    Dashboard
+                  </NavLink>
                   <DeploymentsNavLink />
                   <TeamNavLink />
                 </div>
@@ -88,6 +92,7 @@ export default function App() {
                   <Route path="/deployments/:id" element={<DeploymentDetail />} />
                   <Route path="/expertise" element={<Expertise />} />
                   <Route path="/team" element={<Team />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                 </Routes>
               </main>
             </>
