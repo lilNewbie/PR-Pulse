@@ -275,4 +275,51 @@ describe('GET /api/my-prs/waiting', () => {
     expect(items.map((i) => i.prId)).toContain(visiblePrId)
     expect(items).toHaveLength(1)
   })
+
+  it('open-requests regression: request on PR in connecting repo not counted', async () => {
+    // Create a repo that is still connecting (not yet connected)
+    const connectingRepoId = await createRepo(teamId, 8100, 'connecting-repo')
+    await pool.query(`UPDATE repos SET status = 'connecting' WHERE id = $1`, [connectingRepoId])
+    await grantAccess(meId, connectingRepoId)
+
+    // rev1 has 1 request on a PR in the connecting repo — should NOT be counted
+    const extraPrId = await createPr(connectingRepoId, 50, REV3_GITHUB_ID)
+    await createReviewRequest(extraPrId, REV1_GITHUB_ID, new Date())
+
+    // rev1 also has 1 request on our connected myPr — should be counted (total = 1, not 2)
+    const myPrId = await createPr(repoId, 1, ME_GITHUB_ID)
+    await createReviewRequest(myPrId, REV1_GITHUB_ID, new Date())
+
+    const res = await request(app)
+      .get('/api/my-prs/waiting')
+      .set('Cookie', `session=${session}`)
+
+    expect(res.status).toBe(200)
+    const items = res.body as Array<{ reviewers: Array<{ login: string; openRequests: number }> }>
+    const r1 = items[0].reviewers.find((r) => r.login === 'rev1')!
+    expect(r1.openRequests).toBe(1)
+  })
+
+  it('open-requests regression: request on PR in repo caller cannot access not counted', async () => {
+    // Create a connected repo but do NOT grant meId access
+    const privateRepoId = await createRepo(teamId, 8101, 'private-repo')
+    // no grantAccess call
+
+    // rev1 has 1 request there — should NOT be counted (caller can't see that repo)
+    const extraPrId = await createPr(privateRepoId, 60, REV3_GITHUB_ID)
+    await createReviewRequest(extraPrId, REV1_GITHUB_ID, new Date())
+
+    // rev1 also has 1 request on accessible myPr — total = 1
+    const myPrId = await createPr(repoId, 1, ME_GITHUB_ID)
+    await createReviewRequest(myPrId, REV1_GITHUB_ID, new Date())
+
+    const res = await request(app)
+      .get('/api/my-prs/waiting')
+      .set('Cookie', `session=${session}`)
+
+    expect(res.status).toBe(200)
+    const items = res.body as Array<{ reviewers: Array<{ login: string; openRequests: number }> }>
+    const r1 = items[0].reviewers.find((r) => r.login === 'rev1')!
+    expect(r1.openRequests).toBe(1)
+  })
 })

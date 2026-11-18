@@ -16,6 +16,7 @@ const DEMO_USERS = [
   { githubId: 900001, login: 'demo_lead', role: 'lead' },
   { githubId: 900002, login: 'demo_reviewer_1', role: 'reviewer' },
   { githubId: 900003, login: 'demo_reviewer_2', role: 'reviewer' },
+  { githubId: 900005, login: 'demo_reviewer_3', role: 'reviewer' },
   { githubId: 900004, login: 'demo_author', role: 'pr_author' },
 ] as const
 
@@ -230,7 +231,7 @@ export async function seedDevelopmentData(): Promise<void> {
       )
     }
 
-    console.log('Created four demo users')
+    console.log('Created five demo users')
 
     // ========================================
     // STEP 3: CREATE REPOSITORIES
@@ -424,6 +425,8 @@ export async function seedDevelopmentData(): Promise<void> {
         linesChanged: 10,
         mergeable: true,
         behindBy: 0,
+        reviewRequestedHoursAgo: 30,
+        reviewerGithubId: 900003,
       },
       {
         number: 9,
@@ -513,6 +516,21 @@ export async function seedDevelopmentData(): Promise<void> {
         mergeable: true,
         behindBy: 0,
         mergeCommitSha: DEMO_MERGE_SHAS.dashboard,
+      },
+      // US-18: a stale PR in a different repo, with a 50-hour review wait.
+      {
+        number: 16,
+        title: 'Harden API pagination under load',
+        repo: 'api',
+        authorGithubId: 900004,
+        state: 'open',
+        isDraft: false,
+        hoursSinceActivity: 50,
+        linesChanged: 88,
+        mergeable: true,
+        behindBy: 0,
+        reviewRequestedHoursAgo: 50,
+        reviewerGithubId: 900003,
       },
     ]
 
