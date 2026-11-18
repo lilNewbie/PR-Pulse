@@ -14,7 +14,7 @@ export default defineConfig({
     // Prevent parallel test files from truncating each other's data.
     fileParallelism: false,
 
-    include: ['test/**/*.test.ts'],
+    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     setupFiles: ['test/setup.ts'],
     testTimeout: 30000,
 
@@ -45,6 +45,9 @@ export default defineConfig({
       NODE_ENV: 'test',
     },
   },
+
+  // Client components use the automatic JSX runtime (client/tsconfig.json "jsx": "react-jsx").
+  esbuild: { jsx: 'automatic' },
 
   resolve: {
     alias: {
