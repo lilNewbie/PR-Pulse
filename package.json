@@ -21,6 +21,8 @@
     "hooks:update": "tsx scripts/hooks-update.ts"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
     "@types/node": "^22.0.0",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
@@ -28,6 +30,7 @@
     "concurrently": "^9.0.0",
     "dotenv": "^18.0.9",
     "eslint": "^9.11.0",
+    "jsdom": "^25.0.1",
     "nock": "^14.0.0",
     "node-pg-migrate": "^7.7.0",
     "supertest": "^7.0.0",

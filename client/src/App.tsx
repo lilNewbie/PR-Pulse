@@ -5,6 +5,7 @@ import TeamRepos from './pages/TeamRepos'
 import Deployments from './pages/Deployments'
 import DeploymentDetail from './pages/DeploymentDetail'
 import Expertise from './pages/Expertise'
+import Team, { TeamNavLink } from './pages/Team'
 import SignIn from './pages/SignIn'
 import { useMe } from './hooks/useMe'
 import { apiFetch } from './api/client'
@@ -72,6 +73,7 @@ export default function App() {
                     Expertise
                   </NavLink>
                   <DeploymentsNavLink />
+                  <TeamNavLink />
                 </div>
                 <NavUser />
               </nav>
@@ -85,6 +87,7 @@ export default function App() {
                   <Route path="/deployments" element={<Deployments />} />
                   <Route path="/deployments/:id" element={<DeploymentDetail />} />
                   <Route path="/expertise" element={<Expertise />} />
+                  <Route path="/team" element={<Team />} />
                 </Routes>
               </main>
             </>
