@@ -9,7 +9,7 @@ services:
     name: pr-pulse-staging
     runtime: node
     plan: free
-    branch: render-test
+    branch: main
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health

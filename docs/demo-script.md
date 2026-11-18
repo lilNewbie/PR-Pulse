@@ -7,16 +7,22 @@ permission case for that story. Anything that fails in the rehearsal is either f
 
 ## Before the demo
 
-- [ ] Graded deployment is up: `GET /health` returns 200 (Render or localhost: TBD with the team).
-- [ ] Final `main` deployed, every migration applied (`npm start` runs `npm run migrate` first).
-- [ ] `npm run seed` has run (seeded deployments, file touches and a release-blocker PR, from Mallikarjun's seed).
+The graded deployment is **Render** (staging service `pr-pulse-staging`, https://pr-pulse-443w.onrender.com), deployed from `main`.
+
+- [ ] Final `main` deployed on Render; `GET /health` returns 200. `npm start` runs `npm run migrate` first, so every migration is applied on deploy. Check the deploy log for `Migrations complete!`.
 - [ ] The sandbox repo `pr-pulse-test/sandbox` is connected and its webhook includes `deployment_status`
       (repo **Settings → Webhooks → Recent Deliveries** shows 202s).
+- [ ] **Demo data:** `npm run seed` refuses to run outside the local database, so Render has **no seeded data**. Every step below uses real activity on the sandbox repo. Create it the day before:
+  - 2+ open PRs from the PR Author account, review requested from the Reviewer;
+  - one reviewer with 4+ open requests (for "Overloaded");
+  - one PR with the `release-blocker` label;
+  - a few commits to the default branch from each reviewer (for expertise and suggestions);
+  - Fake deploy runs: staging success → staging failure → staging success, and one production success.
+- [ ] `npm run backfill` has run against the Render database (repos connected before the final sprint only).
 - [ ] Signed in on separate browser profiles:
   - **Lead**: TODO (account)
   - **Reviewer**: TODO (account)
   - **PR Author**: TODO (account; the "second account" that opens PRs)
-- [ ] `npm run backfill` has run on the graded database, so expertise and suggestions have history.
 
 ## Stories
 
@@ -77,10 +83,36 @@ permission case for that story. Anything that fails in the rehearsal is either f
    a `preview` run is ignored (nothing new in the list).
 5. **Permission case:** as the Reviewer, `GET /api/deployments/<id>` → 403.
 
+## Extension stories (US-18 to US-21)
+
+### 11. US-18 Team bottleneck view (Mallikarjun API, Kaushik page)
+1. As the Lead, open **Team**. Totals show open PRs, open review requests and stale PRs.
+2. Point out the reviewer marked **Overloaded** (4+ open requests) at the top, and a reviewer with `0` and "—".
+3. Pick one repository in the picker: every figure changes to that repo only.
+4. **Permission case:** as the Reviewer there's no **Team** link; opening `/team` shows "Only a Lead can view team bottlenecks" (API 403).
+
+### 12. US-21 See who my PR is waiting on (Alan)
+1. As the PR Author, open **My PRs**: under a PR, "Waiting on @reviewer · 30h", longest wait first.
+2. The overloaded reviewer shows "· Overloaded (N open)".
+3. A PR with no review requested shows "No reviewer requested"; a draft PR shows nothing.
+4. The reviewer submits a review on GitHub → within a minute they disappear from that PR.
+5. **Error case:** `GET /api/my-prs/waiting` without a session → 401.
+
+### 13. US-19 Load-aware reviewer suggestions (Mandaar)
+1. Two reviewers have both recently changed a file in a new PR; the more recent one is overloaded.
+2. As the less-loaded reviewer, **Suggested for you** shows the PR with "You changed `<path>` on `<date>` · N open reviews".
+3. The overloaded reviewer doesn't get that suggestion.
+
+### 14. US-20 Dismiss a suggestion that isn't a good fit (Mandaar)
+**Not merged yet** (#40 was closed). Show it only if it lands:
+1. As the Reviewer, click **Not a good fit** on a suggestion → it disappears from **Suggested for you**.
+2. **Permission case:** as the PR Author, `POST /api/suggestions/:prId/dismiss` → 403.
+
 ## Not in this demo (confirm on the board)
 
-These stories in `design.md` §7.1 have no route on `main` as of 2026-11-17. Mark them In progress or show them only if they land:
+These stories in `design.md` §7.1 have no route on `main` as of 2026-11-18. Mark them In progress or show them only if they land:
 - US-03 Disconnect a repository (`DELETE /api/repos/:id`)
 - US-06 Manage team roles (`PATCH /api/members/:id/role`)
 - US-14 Export bottleneck data (`GET /api/export`)
 - US-16 Record a manual deployment: the API exists (`POST /api/deployments`), but there's no page, no "Unknown commit" check and no tests yet.
+- US-10 scheduled sync on Render: `render.yaml` has no cron job yet, so the 15-minute sync (and the US-12 retry of unlinked deploys) doesn't run on the deployed app. Show US-10 from its tests unless a cron job is added.
