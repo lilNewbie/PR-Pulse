@@ -29,6 +29,20 @@ export function TeamNavLink() {
   )
 }
 
+function waitSeverity(hours: number) {
+  if (hours >= 72) return 'critical'
+  if (hours >= 24) return 'high'
+  if (hours >= 4)  return 'mid'
+  return 'low'
+}
+
+function reqSeverity(n: number) {
+  if (n >= 4) return 'critical'
+  if (n >= 3) return 'mid'
+  if (n >= 1) return 'low'
+  return null
+}
+
 function ReviewerTable({ reviewers }: { reviewers: ReviewerLoad[] }) {
   if (reviewers.length === 0) return <p className="text-muted">No open review requests</p>
 
@@ -42,21 +56,41 @@ function ReviewerTable({ reviewers }: { reviewers: ReviewerLoad[] }) {
             <th>Role</th>
             <th>Open requests</th>
             <th>Oldest wait</th>
-            <th />
           </tr>
         </thead>
         <tbody>
-          {reviewers.map((reviewer) => (
-            <tr key={reviewer.login}>
-              <td className="queue-mono">{reviewer.login}</td>
-              <td>{ROLE_LABELS[reviewer.role]}</td>
-              <td>{reviewer.openRequests}</td>
-              <td className="queue-mono">
-                {reviewer.oldestWaitHours === null ? '—' : `${reviewer.oldestWaitHours}h`}
-              </td>
-              <td>{reviewer.overloaded && <span className="badge badge-danger">Overloaded</span>}</td>
-            </tr>
-          ))}
+          {reviewers.map((reviewer) => {
+            const rs = reqSeverity(reviewer.openRequests)
+            return (
+              <tr key={reviewer.login} className={reviewer.overloaded ? 'reviewer-row--overloaded' : ''}>
+                <td className="queue-mono reviewer-name-cell">
+                  {reviewer.login}
+                  {reviewer.overloaded && (
+                    <span className="overload-tag" style={{ marginLeft: 8 }}>
+                      <span className="overload-icon">⚠</span> Overloaded
+                    </span>
+                  )}
+                </td>
+                <td><span className="badge badge-muted">{ROLE_LABELS[reviewer.role]}</span></td>
+                <td>
+                  {rs ? (
+                    <span className={`wait-pill wait-pill--${rs}`}>{reviewer.openRequests}</span>
+                  ) : (
+                    <span className="queue-mono">{reviewer.openRequests}</span>
+                  )}
+                </td>
+                <td>
+                  {reviewer.oldestWaitHours === null ? (
+                    <span className="queue-mono">—</span>
+                  ) : (
+                    <span className={`wait-pill wait-pill--${waitSeverity(reviewer.oldestWaitHours)}`}>
+                      ⏱ {reviewer.oldestWaitHours}h
+                    </span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -72,9 +106,8 @@ function StalePrTable({ prs }: { prs: BottleneckResponse['stalePrs'] }) {
         <thead>
           <tr>
             <th>Title</th>
-            <th>Repository</th>
-            <th>Author</th>
-            <th>Hours inactive</th>
+            <th>Repository · Author</th>
+            <th>Inactive</th>
           </tr>
         </thead>
         <tbody>
@@ -82,10 +115,17 @@ function StalePrTable({ prs }: { prs: BottleneckResponse['stalePrs'] }) {
             <tr key={pr.id}>
               <td>
                 <a href={pr.url} target="_blank" rel="noreferrer">{pr.title}</a>
+                <span className="pr-external-icon" aria-hidden>↗</span>
               </td>
-              <td className="queue-mono">{pr.repo}</td>
-              <td className="queue-mono">{pr.authorLogin}</td>
-              <td>{pr.inactiveHours}</td>
+              <td className="queue-meta-cell">
+                <span className="queue-mono">{pr.repo}</span>
+                <span className="queue-author">@{pr.authorLogin}</span>
+              </td>
+              <td>
+                <span className={`wait-pill wait-pill--${waitSeverity(pr.inactiveHours)}`}>
+                  ⏱ {pr.inactiveHours}h
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -98,16 +138,25 @@ function StalePrTable({ prs }: { prs: BottleneckResponse['stalePrs'] }) {
 export function TeamBottlenecks({ data }: { data: BottleneckResponse }) {
   return (
     <>
-      <div className="connect-form" aria-label="Totals">
-        <span><strong>Open PRs</strong> {data.totals.openPrs}</span>
-        <span><strong>Open review requests</strong> {data.totals.openRequests}</span>
-        <span><strong>Stale PRs</strong> {data.totals.stalePrs}</span>
+      <div className="team-stat-cards" aria-label="Totals">
+        <div className="team-stat-card">
+          <span className="team-stat-label">Open PRs</span>{' '}
+          <span className="team-stat-value">{data.totals.openPrs}</span>
+        </div>
+        <div className="team-stat-card">
+          <span className="team-stat-label">Open review requests</span>{' '}
+          <span className="team-stat-value">{data.totals.openRequests}</span>
+        </div>
+        <div className={`team-stat-card${data.totals.stalePrs > 0 ? ' team-stat-card--warn' : ''}`}>
+          <span className="team-stat-label">Stale PRs</span>{' '}
+          <span className="team-stat-value">{data.totals.stalePrs}</span>
+        </div>
       </div>
 
-      <h3>Reviewer load</h3>
+      <h3 className="team-section-header">Reviewer load</h3>
       <ReviewerTable reviewers={data.reviewers} />
 
-      <h3>Stale PRs</h3>
+      <h3 className="team-section-header">Stale PRs</h3>
       <StalePrTable prs={data.stalePrs} />
     </>
   )
@@ -160,10 +209,11 @@ export default function Team() {
   return (
     <section>
       <h2 className="page-title">Team</h2>
-      <div className="connect-form">
-        <label htmlFor="team-repo">Repository</label>
+      <div className="repo-picker">
+        <label htmlFor="team-repo" className="repo-picker-label">Repository</label>
         <select
           id="team-repo"
+          className="repo-picker-select"
           value={repoId ?? ''}
           onChange={(event) => setRepoId(event.target.value === '' ? null : Number(event.target.value))}
         >

@@ -10,15 +10,29 @@ type QueueState =
   | { status: 'ok'; data: QueueResponse }
   | { status: 'error'; message: string }
 
-function FlagBadges({ flags }: { flags: Flags }) {
-  return (
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-      {flags.stale && <span className="badge badge-warn">Stale</span>}
-      {flags.conflict === 'yes' && <span className="badge badge-danger">Conflict</span>}
-      {flags.conflict === 'checking' && <span className="badge badge-muted">Checking…</span>}
-      {flags.behindBy > 0 && <span className="badge badge-warn">Behind {flags.behindBy}</span>}
-    </div>
-  )
+function waitSeverity(hours: number) {
+  if (hours >= 72) return 'critical'
+  if (hours >= 24) return 'high'
+  if (hours >= 4)  return 'mid'
+  return 'low'
+}
+
+function sizeChip(lines: number) {
+  if (lines >= 500) return { label: `XL · ${lines}`, cls: 'badge-danger' }
+  if (lines >= 200) return { label: `L · ${lines}`,  cls: 'badge-warn' }
+  if (lines >= 50)  return { label: `M · ${lines}`,  cls: 'badge-muted' }
+  return                   { label: `S · ${lines}`,  cls: 'badge-muted' }
+}
+
+function FlagBadges({ flags, isReleaseBlocker }: { flags: Flags; isReleaseBlocker: boolean }) {
+  const chips = []
+  if (isReleaseBlocker)          chips.push(<span key="rb"  className="badge badge-danger">🔒 Release blocker</span>)
+  if (flags.stale)               chips.push(<span key="st"  className="badge badge-warn">Stale</span>)
+  if (flags.conflict === 'yes')  chips.push(<span key="cf"  className="badge badge-danger">Conflict</span>)
+  if (flags.conflict === 'checking') chips.push(<span key="ck" className="badge badge-muted">Checking…</span>)
+  if (flags.behindBy > 0)        chips.push(<span key="bh"  className="badge badge-warn">Behind {flags.behindBy}</span>)
+  if (chips.length === 0) return null
+  return <div className="queue-flags">{chips}</div>
 }
 
 export default function ReviewQueue() {
@@ -70,28 +84,38 @@ export default function ReviewQueue() {
             <tr>
               <th>#</th>
               <th>Title</th>
-              <th>Repo</th>
-              <th>Author</th>
-              <th>Waiting</th>
-              <th>Lines</th>
-              <th>Flags</th>
+              <th>Repo · Author</th>
+              <th>Wait</th>
+              <th>Size</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td className="queue-mono">{item.position}</td>
-                <td><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></td>
-                <td className="queue-mono">{item.repo}</td>
-                <td className="queue-mono">{item.authorLogin}</td>
-                <td className="queue-mono">{item.waitingHours}h</td>
-                <td className="queue-mono">{item.linesChanged}</td>
-                <td>
-                  {item.isReleaseBlocker && <span className="badge badge-danger">Release blocker</span>}
-                  <FlagBadges flags={item.flags} />
-                </td>
-              </tr>
-            ))}
+            {items.map((item) => {
+              const size = sizeChip(item.linesChanged)
+              return (
+                <tr key={item.id} className={item.isReleaseBlocker ? 'queue-row--blocker' : ''}>
+                  <td className="queue-rank-cell">
+                    <span className="rank-badge">{item.position}</span>
+                  </td>
+                  <td className="queue-title-cell">
+                    <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a>
+                    <FlagBadges flags={item.flags} isReleaseBlocker={item.isReleaseBlocker} />
+                  </td>
+                  <td className="queue-meta-cell">
+                    <span className="queue-mono">{item.repo}</span>
+                    <span className="queue-author">@{item.authorLogin}</span>
+                  </td>
+                  <td>
+                    <span className={`wait-pill wait-pill--${waitSeverity(item.waitingHours)}`}>
+                      ⏱ {item.waitingHours}h
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`badge ${size.cls}`}>{size.label}</span>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       )}

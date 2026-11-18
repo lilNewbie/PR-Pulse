@@ -63,6 +63,7 @@ export default function TeamRepos() {
         <ul className="repo-list">
           {repos.map((repo) => (
             <li key={repo.id} className="repo-item">
+              <RepoDot repo={repo} />
               <span className="repo-name">{repo.fullName}</span>
               <RepoStatus repo={repo} />
             </li>
@@ -73,24 +74,36 @@ export default function TeamRepos() {
   )
 }
 
+function RepoDot({ repo }: { repo: RepoSummary }) {
+  if (repo.status === 'connecting') return <span className="repo-dot repo-dot--connecting" title="Importing…" />
+  if (repo.syncStatus === 'ok')     return <span className="repo-dot repo-dot--connected"  title="Connected" />
+  return                                   <span className="repo-dot repo-dot--failed"     title="Sync error" />
+}
+
 function RepoStatus({ repo }: { repo: RepoSummary }) {
-  if (repo.status === 'connecting')
-    return <span className="repo-status-text status-syncing">Importing open PRs…</span>
+  if (repo.status === 'connecting') {
+    return (
+      <span className="repo-status-text status-syncing">
+        <span className="repo-spinner" />
+        Importing open PRs…
+      </span>
+    )
+  }
 
   const lastSynced = repo.lastSyncedAt
     ? `Last synced ${new Date(repo.lastSyncedAt).toLocaleString()}`
     : 'Not synced yet'
 
-  return (
-    <span className="repo-status-text">
-      {repo.syncStatus !== 'ok' ? (
-        <span className="status-error">Sync {repo.syncStatus.replace('_', ' ')} · </span>
-      ) : (
-        <span className="status-ok">✓ </span>
-      )}
-      {lastSynced}
-    </span>
-  )
+  if (repo.syncStatus !== 'ok') {
+    return (
+      <span className="repo-sync-error">
+        <span className="repo-sync-error-label">Sync {repo.syncStatus.replace('_', ' ')}</span>
+        <span className="repo-status-text">{lastSynced}</span>
+      </span>
+    )
+  }
+
+  return <span className="repo-status-text status-ok">{lastSynced}</span>
 }
 
 function ConnectRepoForm({ onConnected }: { onConnected: () => void }) {
@@ -117,9 +130,10 @@ function ConnectRepoForm({ onConnected }: { onConnected: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="connect-form">
+      <span className="connect-form-hint">GitHub repo:</span>
       <input
         aria-label="Owner"
-        placeholder="owner"
+        placeholder="acme"
         value={owner}
         onChange={(e) => setOwner(e.target.value)}
         required
@@ -127,7 +141,7 @@ function ConnectRepoForm({ onConnected }: { onConnected: () => void }) {
       <span className="connect-form-sep">/</span>
       <input
         aria-label="Repository name"
-        placeholder="repo-name"
+        placeholder="my-repo"
         value={name}
         onChange={(e) => setName(e.target.value)}
         required
