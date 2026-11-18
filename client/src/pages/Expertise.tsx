@@ -10,11 +10,38 @@ type ExpertiseState =
   | { status: 'loaded'; areas: ExpertiseArea[] }
   | { status: 'error'; message: string }
 
+function relativeAge(dateStr: string): string {
+  const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000)
+  if (days === 0)   return 'today'
+  if (days === 1)   return 'yesterday'
+  if (days < 30)    return `${days}d ago`
+  if (days < 365)   return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}
+
+function AreaPath({ path }: { path: string }) {
+  const slash = path.lastIndexOf('/')
+  if (slash === -1) return <span className="area-leaf">{path}</span>
+  return (
+    <>
+      <span className="area-prefix">{path.slice(0, slash + 1)}</span>
+      <span className="area-leaf">{path.slice(slash + 1)}</span>
+    </>
+  )
+}
+
 /** Presentational, exported so the empty state is easy to test. */
 export function ExpertiseTable({ areas }: { areas: ExpertiseArea[] }) {
   if (areas.length === 0) {
-    return <p className="text-muted">No contribution history in this repository</p>
+    return (
+      <div className="expertise-empty">
+        <span className="expertise-empty-icon">◎</span>
+        <p>No contribution history in this repository</p>
+      </div>
+    )
   }
+
+  const maxCommits = Math.max(...areas.map((a) => a.commits), 1)
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -27,15 +54,35 @@ export function ExpertiseTable({ areas }: { areas: ExpertiseArea[] }) {
           </tr>
         </thead>
         <tbody>
-          {areas.map((area) => (
-            <tr key={area.area}>
-              <td className="queue-mono">{area.area}</td>
-              <td>{area.commits}</td>
-              <td className="queue-mono">
-                <time dateTime={area.lastCommitAt}>{new Date(area.lastCommitAt).toLocaleDateString()}</time>
-              </td>
-            </tr>
-          ))}
+          {areas.map((area) => {
+            const stale = (Date.now() - new Date(area.lastCommitAt).getTime()) > 90 * 86_400_000
+            return (
+              <tr key={area.area}>
+                <td className="queue-mono expertise-area-cell">
+                  <AreaPath path={area.area} />
+                </td>
+                <td className="expertise-commits-cell">
+                  <div className="expertise-bar-row">
+                    <div className="expertise-bar-bg">
+                      <div
+                        className="expertise-bar-fill"
+                        style={{ width: `${Math.round((area.commits / maxCommits) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="expertise-commit-count">{area.commits}</span>
+                  </div>
+                </td>
+                <td className="queue-mono">
+                  <time dateTime={area.lastCommitAt}>
+                    {new Date(area.lastCommitAt).toLocaleDateString()}
+                  </time>
+                  <span className={stale ? 'date-relative date-relative--stale' : 'date-relative'}>
+                    {relativeAge(area.lastCommitAt)}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -83,10 +130,11 @@ export default function Expertise() {
         <p className="text-muted">No repositories you can access.</p>
       ) : (
         <>
-          <div className="connect-form">
-            <label htmlFor="expertise-repo">Repository</label>
+          <div className="repo-picker">
+            <label htmlFor="expertise-repo" className="repo-picker-label">Repository</label>
             <select
               id="expertise-repo"
+              className="repo-picker-select"
               value={selectedRepoId}
               onChange={(event) => setRepoChoice(Number(event.target.value))}
             >

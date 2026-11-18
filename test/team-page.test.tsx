@@ -74,9 +74,9 @@ describe('US-18 Team page', () => {
 
     const rows = bodyRows(screen.getByRole('table', { name: 'Reviewer load' }))
     expect(rows.map((row) => within(row).getAllByRole('cell').slice(0, 4).map((cell) => cell.textContent))).toEqual([
-      ['busy-bea', 'Reviewer', '5', '30h'],
-      ['lead-li', 'Lead', '2', '12h'],
-      ['idle-ida', 'Reviewer', '0', '—'],
+      ['busy-bea⚠ Overloaded', 'Reviewer', '5', '⏱ 30h'],
+      ['lead-li',              'Lead',      '2', '⏱ 12h'],
+      ['idle-ida',             'Reviewer',  '0', '—'],
     ])
     const totals = screen.getByLabelText('Totals')
     expect(totals.textContent).toContain('Open PRs 9')
@@ -88,7 +88,7 @@ describe('US-18 Team page', () => {
     render(<TeamBottlenecks data={FIXTURE} />)
 
     const rows = bodyRows(screen.getByRole('table', { name: 'Reviewer load' }))
-    expect(rows.map((row) => within(row).queryByText('Overloaded') !== null)).toEqual([true, false, false])
+    expect(rows.map((row) => within(row).queryByText('Overloaded', { exact: false }) !== null)).toEqual([true, false, false])
   })
 
   it('US-18 AC3: lists stale PRs with hours inactive, longest first, linking to GitHub', () => {
@@ -96,8 +96,8 @@ describe('US-18 Team page', () => {
 
     const rows = bodyRows(screen.getByRole('table', { name: 'Stale PRs' }))
     expect(rows.map((row) => within(row).getAllByRole('cell').map((cell) => cell.textContent))).toEqual([
-      ['Refactor sync', 'acme/api', 'author-dev', '120'],
-      ['Bump deps', 'acme/api', 'author-dev', '80'],
+      ['Refactor sync↗', 'acme/api@author-dev', '⏱ 120h'],
+      ['Bump deps↗',     'acme/api@author-dev', '⏱ 80h'],
     ])
     expect(screen.getByRole('link', { name: 'Refactor sync' }).getAttribute('href')).toBe(
       'https://github.com/acme/api/pull/41',
