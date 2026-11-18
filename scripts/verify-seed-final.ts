@@ -84,7 +84,26 @@ async function verify(): Promise<void> {
   `, [demoTeam])
   const authorLogins = new Set(authors.map((row) => row.author_login))
 
-  assert.equal(prs, 15, 'Expected original 13 PRs plus two merged PRs')
+  const { rows: reviewerLoad } = await pool.query<{ login: string; count: number }>(`
+    SELECT u.login, COUNT(p.id)::integer AS count
+    FROM users u
+    JOIN members m ON m.user_id = u.id
+    JOIN teams t ON t.id = m.team_id
+    LEFT JOIN review_requests rr ON rr.reviewer_github_id = u.github_id
+    LEFT JOIN pull_requests p ON p.id = rr.pr_id AND p.state = 'open'
+      AND p.is_draft = false
+      AND p.repo_id IN (
+        SELECT r.id FROM repos r WHERE r.team_id = t.id AND r.status = 'connected'
+      )
+    WHERE t.name = $1 AND m.role = 'reviewer'
+    GROUP BY u.login
+  `, [demoTeam])
+  const loads = new Map(reviewerLoad.map((r) => [r.login, Number(r.count)]))
+  assert.equal(loads.get('demo_reviewer_1'), 5, 'Reviewer 1 must have five active requests')
+  assert.equal(loads.get('demo_reviewer_2'), 3, 'Reviewer 2 must have three active requests')
+  assert.equal(loads.get('demo_reviewer_3'), 0, 'Reviewer 3 must have zero active requests')
+
+  assert.equal(prs, 16, 'Expected 15 final-sprint PRs plus one US-18 API PR')
   assert.equal(blockers, 1, 'Expected one open release blocker')
   assert.equal(changedFiles, 4, 'Expected four changed-file fixtures')
   assert.equal(touches, 6, 'Expected six file-touch fixtures')
@@ -109,7 +128,7 @@ async function verify(): Promise<void> {
   console.log(`  ${changedFiles} PR file rows, ${touches} file touches`)
   console.log(`  ${deploymentRows.length} deployments, ${links} linked deployment-PR pairs`)
   console.log('  Staging success -> failed -> success; first production; valid zero-PR example')
-  console.log('  Two reviewers, PR Author, and bot file history present')
+  console.log('  Three reviewers (5 / 3 / 0 open requests), PR Author, and bot file history present')
 }
 
 verify()

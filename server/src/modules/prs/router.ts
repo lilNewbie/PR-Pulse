@@ -11,9 +11,11 @@ import {
 } from '../../db/prs'
 import { computeFlags } from '../../flags'
 import deploymentHistoryRouter from './deployment-history'
+import teamBottlenecksRouter from '../team/router'
 
 const router = Router()
 router.use(deploymentHistoryRouter)
+router.use(teamBottlenecksRouter)
 router.get('/api/my-prs', requireSession, async (req, res, next) => {
   try {
     const userId = req.user!.id
