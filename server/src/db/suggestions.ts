@@ -1,5 +1,6 @@
 // Owned by Mandaar. Reviewer suggestions (US-11 design-final 5.2; US-19, US-20 design-extension 4.1, 4.2).
 import pool from './pool'
+import { LOAD_CTE } from './openRequests'
 import type { PrRow } from './types'
 
 // One row per file of a PR where the user is the suggested reviewer.
@@ -31,21 +32,14 @@ const directorySql = (path: string) =>
 // next eligible toucher can win instead (US-20, design-extension 4.2). Returns the files where the reviewer is
 // this user.
 //
-// Open requests are counted once for everyone, in the `load` CTE. They span every connected repo, not only the
-// caller's, so every caller sees the same load for a teammate and agrees on who wins each file.
+// Open requests come from the shared LOAD_CTE (design-extension 1), counted once for all candidates and limited to
+// the caller's repo_access; its $1 is this query's $1, the caller's user id.
 export async function listSuggestionRows(userId: number): Promise<SuggestionRow[]> {
   const { rows } = await pool.query<SuggestionRow>(
     `WITH me AS (
        SELECT id, github_id FROM users WHERE id = $1
      ),
-     load AS (
-       SELECT rr.reviewer_github_id, COUNT(*)::int AS open_requests
-       FROM review_requests rr
-       JOIN pull_requests p ON p.id = rr.pr_id
-       JOIN repos r ON r.id = p.repo_id AND r.status = 'connected'
-       WHERE p.state = 'open' AND p.is_draft = false
-       GROUP BY rr.reviewer_github_id
-     ),
+     ${LOAD_CTE},
      candidates AS (
        SELECT p.*, r.owner || '/' || r.name AS repo_full_name, r.team_id
        FROM pull_requests p

@@ -3,6 +3,7 @@ import pool from './pool'
 // CTE fragment: counts open review requests per reviewer, scoped to repos the caller
 // can access and that are connected. Import this into any query that needs reviewer
 // load — do NOT copy the SQL inline; that's how waiting.ts and suggestions.ts drifted.
+// $1 must be the caller's user id in every query that uses it.
 export const LOAD_CTE = `load AS (
   SELECT rr.reviewer_github_id, COUNT(*)::int AS open_requests
   FROM review_requests rr

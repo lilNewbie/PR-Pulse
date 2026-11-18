@@ -114,7 +114,7 @@ async function setupTeam() {
 }
 
 // Gives a reviewer n open review requests on PRs with no files (so those PRs are never suggested themselves).
-async function giveLoad(githubId: number, n: number, o: { draft?: boolean; state?: string } = {}) {
+async function giveLoad(githubId: number, n: number, o: { draft?: boolean; state?: string; repo?: number } = {}) {
   for (let i = 0; i < n; i++) await requestReview(await createPr([], o), githubId)
 }
 
@@ -313,6 +313,35 @@ describe('US-19 load-aware suggestions', () => {
 
     expect(await suggestionsFor(ME)).toEqual([])
     expect((await suggestionsFor(ALICE)).map((i) => i.id)).toEqual([prId])
+  })
+
+  it('open-requests regression: a request on a PR in a repo that is still connecting is not counted', async () => {
+    const connecting = await createRepo(8004, 'connecting')
+    await pool.query("UPDATE repos SET status = 'connecting' WHERE id = $1", [connecting])
+    await grantAccess(ME, connecting)
+    await createPr(['src/a.ts'])
+    await touch('src/a.ts', 'me', hoursAgo(1))
+    await giveLoad(ME, 1)
+    await giveLoad(ME, 2, { repo: connecting })
+
+    const [item] = await suggestionsFor(ME)
+    expect(item.reasons[0].openRequests).toBe(1)
+  })
+
+  it('open-requests regression: requests in a repo I cannot access are not counted, for me or a teammate', async () => {
+    const prId = await createPr(['src/a.ts'])
+    await touch('src/a.ts', 'alice', hoursAgo(1))
+    await touch('src/a.ts', 'me', hoursAgo(10))
+    // Alice is busy only in a repo I can't see, so from my view she has 0 and, being more recent, keeps the file.
+    await giveLoad(ALICE, 3, { repo: hiddenRepoId })
+    expect(await suggestionsFor(ME)).toEqual([])
+
+    // And my own count leaves out my requests there.
+    await touch('src/a.ts', 'me', hoursAgo(0.5))
+    await giveLoad(ME, 2, { repo: hiddenRepoId })
+    const [item] = await suggestionsFor(ME)
+    expect(item.id).toBe(prId)
+    expect(item.reasons[0].openRequests).toBe(0)
   })
 
   it('counts the 3 most recent distinct touchers, so repeat commits by one person take one place', async () => {
