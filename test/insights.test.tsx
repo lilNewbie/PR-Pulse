@@ -10,11 +10,13 @@ import { useMe } from '../client/src/hooks/useMe'
 vi.mock('../client/src/hooks/useMe', () => ({ useMe: vi.fn() }))
 
 // Recharts' ResponsiveContainer needs ResizeObserver, which jsdom doesn't have.
+// Assigned at module level so it survives vi.unstubAllGlobals() between tests.
 class NoopResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
+globalThis.ResizeObserver = NoopResizeObserver
 
 const NOW = new Date('2026-11-18T12:00:00Z')
 
@@ -138,7 +140,6 @@ describe('Insights page', () => {
   beforeEach(() => {
     fetchMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('ResizeObserver', NoopResizeObserver)
   })
 
   afterEach(() => {
@@ -152,6 +153,7 @@ describe('Insights page', () => {
           queue: [queued(1, 5), queued(2, 80, { isReleaseBlocker: true })],
           myPrs: [pr(3, {}, { stale: true })],
           deployDays: deploysPerDay([deploy(1, '2026-11-18T01:00:00Z', 'failed')], NOW),
+          bottlenecks: null,
           warnings: [],
         }}
       />,
@@ -240,6 +242,7 @@ describe('Insights page', () => {
     respond({
       '/api/my-prs': { items: [] },
       '/api/queue': { items: [], lastSyncedAt: null, syncWarning: false },
+      '/api/team/bottlenecks': { reviewers: [], stalePrs: [], totals: { openPrs: 0, openRequests: 0, stalePrs: 0 } },
     })
     render(<MemoryRouter><Insights /></MemoryRouter>)
 

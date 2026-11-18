@@ -100,3 +100,15 @@ export function computeKpis(input: {
 export function inRepo<T extends PrSummary>(prs: T[], repoFullName: string | null): T[] {
   return repoFullName === null ? prs : prs.filter((pr) => pr.repo === repoFullName)
 }
+
+export interface ReviewerBar {
+  login: string
+  openRequests: number
+  overloaded: boolean
+}
+
+export function reviewerLoadBars(
+  reviewers: { login: string; openRequests: number; overloaded: boolean }[],
+): ReviewerBar[] {
+  return reviewers.map((r) => ({ login: r.login, openRequests: r.openRequests, overloaded: r.overloaded }))
+}
