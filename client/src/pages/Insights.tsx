@@ -184,9 +184,10 @@ function DeployChart({ days }: { days: DeployDay[] }) {
 }
 
 export interface InsightsData {
-  queue: QueueItem[] | null // null: not a Reviewer or Lead
-  myPrs: PrSummary[]
-  deployDays: DeployDay[] | null // null: not a Lead
+  queue: QueueItem[] | null // null: not a Reviewer or Lead, or it failed to load (see warnings)
+  myPrs: PrSummary[] | null // null: it failed to load (see warnings)
+  deployDays: DeployDay[] | null // null: not a Lead, or no repo's deployments loaded (see warnings)
+  warnings: string[] // one line per source that failed; the rest of the dashboard still renders
 }
 
 /** Presentational, exported for component tests. */
@@ -195,14 +196,22 @@ export function InsightsView({ data }: { data: InsightsData }) {
 
   return (
     <>
+      {data.warnings.length > 0 && (
+        <ul className="insights-warnings" role="status">
+          {data.warnings.map((warning) => (
+            <li key={warning}>⚠ {warning}</li>
+          ))}
+        </ul>
+      )}
+
       <div className="insights-kpis">
         {kpis.waitingOnMe !== null && <KpiTile label="Waiting on my review" value={String(kpis.waitingOnMe)} />}
         {kpis.waitingOnMe !== null && (
           <KpiTile label="Longest wait" value={kpis.longestWaitHours === null ? '—' : `${kpis.longestWaitHours}h`} />
         )}
         {kpis.releaseBlockers !== null && <KpiTile label="Release blockers in my queue" value={String(kpis.releaseBlockers)} />}
-        <KpiTile label="My open PRs" value={String(kpis.myOpenPrs)} />
-        <KpiTile label="My stale PRs" value={String(kpis.myStalePrs)} />
+        {kpis.myOpenPrs !== null && <KpiTile label="My open PRs" value={String(kpis.myOpenPrs)} />}
+        {kpis.myStalePrs !== null && <KpiTile label="My stale PRs" value={String(kpis.myStalePrs)} />}
         {kpis.deploys !== null && (
           <KpiTile label="Deploys, last 14 days" value={String(kpis.deploys)} note={`${kpis.failedDeploys} failed`} />
         )}
@@ -214,9 +223,11 @@ export function InsightsView({ data }: { data: InsightsData }) {
             <CountChart rows={waitBuckets(data.queue)} unit="PRs" />
           </ChartCard>
         )}
-        <ChartCard title="My open PRs by flag" sub="A PR with several flags counts once in each">
-          <CountChart rows={flagCounts(data.myPrs)} unit="open PRs" />
-        </ChartCard>
+        {data.myPrs !== null && (
+          <ChartCard title="My open PRs by flag" sub="A PR with several flags counts once in each">
+            <CountChart rows={flagCounts(data.myPrs)} unit="open PRs" />
+          </ChartCard>
+        )}
         {data.deployDays !== null && (
           <ChartCard title="Deployments per day" sub="Last 14 days (UTC), by status">
             <DeployChart days={data.deployDays} />
@@ -227,20 +238,57 @@ export function InsightsView({ data }: { data: InsightsData }) {
   )
 }
 
-type LoadState = { status: 'loading' } | { status: 'loaded'; data: InsightsData } | { status: 'error'; message: string }
+type Settled<T> = { ok: true; value: T } | { ok: false; message: string }
 
-async function loadInsights(role: Role, repoIds: number[]): Promise<Omit<InsightsData, 'deployDays'> & { deployments: DeploymentSummary[] | null }> {
-  const [myPrs, queue, deployments] = await Promise.all([
-    apiFetch<MyPrsResponse>('/api/my-prs').then((r) => r.items),
-    role === 'pr_author' ? Promise.resolve(null) : apiFetch<QueueResponse>('/api/queue').then((r) => r.items),
-    role === 'lead'
-      ? Promise.all(repoIds.map((id) => apiFetch<DeploymentSummary[]>(`/api/deployments?repoId=${id}`))).then((lists) =>
-          lists.flat(),
-        )
-      : Promise.resolve(null),
-  ])
-  return { myPrs, queue, deployments }
+// Never rejects, so one failed request can't take the other panels down with it.
+function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
+  return promise.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, message: error instanceof Error ? error.message : 'request failed' }),
+  )
 }
+
+type Repo = { id: number; fullName: string }
+
+/** Loads each source independently. A failed source becomes a warning instead of an error page. */
+export async function loadInsights(role: Role, repos: Repo[], repoName: string | null, now: Date): Promise<InsightsData> {
+  const [myPrs, queue, deployments] = await Promise.all([
+    settle(apiFetch<MyPrsResponse>('/api/my-prs').then((r) => r.items)),
+    role === 'pr_author' ? null : settle(apiFetch<QueueResponse>('/api/queue').then((r) => r.items)),
+    role === 'lead'
+      ? Promise.all(
+          repos.map(async (repo) => ({
+            repo,
+            result: await settle(apiFetch<DeploymentSummary[]>(`/api/deployments?repoId=${repo.id}`)),
+          })),
+        )
+      : null,
+  ])
+
+  const warnings: string[] = []
+  if (!myPrs.ok) warnings.push(`My PRs couldn't be loaded: ${myPrs.message}`)
+  if (queue && !queue.ok) warnings.push(`Your review queue couldn't be loaded: ${queue.message}`)
+
+  let deployDays: DeployDay[] | null = null
+  if (deployments) {
+    const loaded: DeploymentSummary[] = []
+    for (const { repo, result } of deployments) {
+      if (result.ok) loaded.push(...result.value)
+      else warnings.push(`Deployments for ${repo.fullName} couldn't be loaded: ${result.message}`)
+    }
+    const anyLoaded = deployments.length === 0 || deployments.some((d) => d.result.ok)
+    deployDays = anyLoaded ? deploysPerDay(loaded, now) : null
+  }
+
+  return {
+    myPrs: myPrs.ok ? inRepo(myPrs.value, repoName) : null,
+    queue: queue && queue.ok ? inRepo(queue.value, repoName) : null,
+    deployDays,
+    warnings,
+  }
+}
+
+type LoadState = { status: 'loading' } | { status: 'loaded'; data: InsightsData }
 
 export default function Insights() {
   const me = useMe()
@@ -255,23 +303,11 @@ export default function Insights() {
     if (role === null || repos === null) return
     let cancelled = false
     setState({ status: 'loading' })
-    const ids = repoId === null ? repos.map((r) => r.id) : [repoId]
-    const repoName = repoId === null ? null : (repos.find((r) => r.id === repoId)?.fullName ?? null)
-    loadInsights(role, ids)
-      .then(({ myPrs, queue, deployments }) => {
-        if (cancelled) return
-        setState({
-          status: 'loaded',
-          data: {
-            myPrs: inRepo(myPrs, repoName),
-            queue: queue === null ? null : inRepo(queue, repoName),
-            deployDays: deployments === null ? null : deploysPerDay(deployments, new Date()),
-          },
-        })
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setState({ status: 'error', message: error instanceof Error ? error.message : 'Could not load insights' })
-      })
+    const picked = repoId === null ? repos : repos.filter((r) => r.id === repoId)
+    const repoName = repoId === null ? null : (picked[0]?.fullName ?? null)
+    loadInsights(role, picked, repoName, new Date()).then((data) => {
+      if (!cancelled) setState({ status: 'loaded', data })
+    })
     return () => {
       cancelled = true
     }
@@ -299,13 +335,7 @@ export default function Insights() {
           ))}
         </select>
       </div>
-      {state.status === 'loaded' ? (
-        <InsightsView data={state.data} />
-      ) : state.status === 'error' ? (
-        <p className="text-error">{state.message}</p>
-      ) : (
-        <p className="text-muted">Loading insights…</p>
-      )}
+      {state.status === 'loaded' ? <InsightsView data={state.data} /> : <p className="text-muted">Loading insights…</p>}
     </section>
   )
 }

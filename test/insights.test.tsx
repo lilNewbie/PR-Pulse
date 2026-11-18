@@ -108,6 +108,7 @@ describe('Insights data', () => {
       deploys: null,
     })
     expect(computeKpis({ queue: [], myPrs: [], deployDays: null }).longestWaitHours).toBeNull()
+    expect(computeKpis({ queue: null, myPrs: null, deployDays: null })).toMatchObject({ myOpenPrs: null, myStalePrs: null })
   })
 
   it('filters PRs to one repository', () => {
@@ -151,6 +152,7 @@ describe('Insights page', () => {
           queue: [queued(1, 5), queued(2, 80, { isReleaseBlocker: true })],
           myPrs: [pr(3, {}, { stale: true })],
           deployDays: deploysPerDay([deploy(1, '2026-11-18T01:00:00Z', 'failed')], NOW),
+          warnings: [],
         }}
       />,
     )
@@ -201,11 +203,50 @@ describe('Insights page', () => {
     await waitFor(() => expect(screen.getByText('My open PRs').parentElement!.textContent).toContain('1'))
   })
 
-  it('shows the error when a request fails', async () => {
+  it('a failed review queue becomes a warning; My PRs still renders', async () => {
     signedInAs('reviewer')
-    respond({ '/api/my-prs': { items: [] } }) // /api/queue answers 403
+    respond({ '/api/my-prs': { items: [pr(1, {}, { stale: true })] } }) // /api/queue answers 403 "nope"
     render(<MemoryRouter><Insights /></MemoryRouter>)
 
-    expect(await screen.findByText('nope')).toBeTruthy()
+    expect((await screen.findByRole('status')).textContent).toContain("Your review queue couldn't be loaded: nope")
+    expect(screen.getByRole('region', { name: 'My open PRs by flag' })).toBeTruthy()
+    expect(screen.getByText('My stale PRs').parentElement!.textContent).toContain('1')
+    expect(screen.queryByText('Waiting on my review')).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Review queue by wait time' })).toBeNull()
+  })
+
+  it("Lead: one repo's deployments failing keeps the rest of the dashboard and the other repo's deploys", async () => {
+    signedInAs('lead')
+    const today = new Date().toISOString()
+    respond({
+      '/api/my-prs': { items: [pr(1)] },
+      '/api/queue': { items: [queued(2, 10)], lastSyncedAt: null, syncWarning: false },
+      '/api/deployments?repoId=7': [deploy(1, today, 'success'), deploy(2, today, 'failed')],
+      // repoId=8 answers 403 "nope"
+    })
+    render(<MemoryRouter><Insights /></MemoryRouter>)
+
+    expect((await screen.findByRole('status')).textContent).toContain(
+      "Deployments for acme/web couldn't be loaded: nope",
+    )
+    expect(screen.getByText('Deploys, last 14 days').parentElement!.textContent).toContain('2')
+    expect(screen.getByText('Waiting on my review').parentElement!.textContent).toContain('1')
+    expect(screen.getByText('My open PRs').parentElement!.textContent).toContain('1')
+    expect(screen.getByRole('region', { name: 'Deployments per day' })).toBeTruthy()
+  })
+
+  it('Lead: when every deployment request fails, only the deployment panel is hidden', async () => {
+    signedInAs('lead')
+    respond({
+      '/api/my-prs': { items: [] },
+      '/api/queue': { items: [], lastSyncedAt: null, syncWarning: false },
+    })
+    render(<MemoryRouter><Insights /></MemoryRouter>)
+
+    const warnings = await screen.findByRole('status')
+    expect(within(warnings).getAllByRole('listitem')).toHaveLength(2) // acme/api and acme/web
+    expect(screen.queryByRole('region', { name: 'Deployments per day' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Review queue by wait time' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'My open PRs by flag' })).toBeTruthy()
   })
 })

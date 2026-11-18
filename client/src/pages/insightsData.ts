@@ -19,8 +19,8 @@ export interface Kpis {
   waitingOnMe: number | null // null when the caller can't see a review queue (PR Author)
   longestWaitHours: number | null
   releaseBlockers: number | null
-  myOpenPrs: number
-  myStalePrs: number
+  myOpenPrs: number | null // null when My PRs failed to load
+  myStalePrs: number | null
   deploys: number | null // null for non-Leads
   failedDeploys: number | null
 }
@@ -80,17 +80,17 @@ export function deploysPerDay(deployments: DeploymentSummary[], now: Date, days 
 
 export function computeKpis(input: {
   queue: QueueItem[] | null
-  myPrs: PrSummary[]
+  myPrs: PrSummary[] | null
   deployDays: DeployDay[] | null
 }): Kpis {
   const { queue, myPrs, deployDays } = input
-  const open = myPrs.filter((pr) => pr.state === 'open')
+  const open = myPrs === null ? null : myPrs.filter((pr) => pr.state === 'open')
   return {
     waitingOnMe: queue ? queue.length : null,
     longestWaitHours: queue && queue.length > 0 ? Math.max(...queue.map((item) => item.waitingHours)) : null,
     releaseBlockers: queue ? queue.filter((item) => item.isReleaseBlocker).length : null,
-    myOpenPrs: open.length,
-    myStalePrs: open.filter((pr) => pr.flags.stale).length,
+    myOpenPrs: open === null ? null : open.length,
+    myStalePrs: open === null ? null : open.filter((pr) => pr.flags.stale).length,
     deploys: deployDays ? deployDays.reduce((sum, d) => sum + d.success + d.failed + d.pending, 0) : null,
     failedDeploys: deployDays ? deployDays.reduce((sum, d) => sum + d.failed, 0) : null,
   }
