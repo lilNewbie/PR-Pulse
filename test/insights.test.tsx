@@ -10,11 +10,13 @@ import { useMe } from '../client/src/hooks/useMe'
 vi.mock('../client/src/hooks/useMe', () => ({ useMe: vi.fn() }))
 
 // Recharts' ResponsiveContainer needs ResizeObserver, which jsdom doesn't have.
+// Assigned at module level so it survives vi.unstubAllGlobals() between tests.
 class NoopResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
+globalThis.ResizeObserver = NoopResizeObserver
 
 const NOW = new Date('2026-11-18T12:00:00Z')
 
@@ -138,7 +140,6 @@ describe('Insights page', () => {
   beforeEach(() => {
     fetchMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('ResizeObserver', NoopResizeObserver)
   })
 
   afterEach(() => {
