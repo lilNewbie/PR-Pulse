@@ -1,7 +1,7 @@
 // Owned by Mandaar. "Suggested for you" (US-11, US-19, US-20): open PRs that change files I worked on recently,
 // where I have the lightest review load among the recent committers. "Not a good fit" dismisses a reason's
 // directory for 30 days.
-// Mounted by Alan on the Review Queue page.
+// Mounted on the Review Queue page, below the queue, for Reviewers and Leads.
 import { useEffect, useState } from 'react'
 import type { SuggestionItem, SuggestionReason } from 'shared'
 import { apiFetch } from '../api/client'

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMe } from '../hooks/useMe'
 import { apiFetch, ApiClientError } from '../api/client'
 import type { QueueResponse, Flags } from 'shared'
+import SuggestedForYou from '../components/SuggestedForYou'
 
 type QueueState =
   | { status: 'loading' }
@@ -93,6 +94,12 @@ export default function ReviewQueue() {
             ))}
           </tbody>
         </table>
+      )}
+      {/* US-11, US-19, US-20: suggestions are for Reviewers and Leads; the API returns 403 to PR Authors. */}
+      {me.me.role !== 'pr_author' && (
+        <div style={{ marginTop: '2rem' }}>
+          <SuggestedForYou />
+        </div>
       )}
     </div>
   )
