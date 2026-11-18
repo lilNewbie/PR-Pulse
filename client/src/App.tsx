@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
 import MyPRs from './pages/MyPRs'
 import ReviewQueue from './pages/ReviewQueue'
@@ -6,6 +7,9 @@ import Deployments from './pages/Deployments'
 import DeploymentDetail from './pages/DeploymentDetail'
 import Expertise from './pages/Expertise'
 import Team, { TeamNavLink } from './pages/Team'
+
+// Loaded on demand so the chart library isn't in the bundle for every other page.
+const Insights = lazy(() => import('./pages/Insights'))
 import SignIn from './pages/SignIn'
 import { useMe } from './hooks/useMe'
 import { apiFetch } from './api/client'
@@ -72,6 +76,9 @@ export default function App() {
                   <NavLink to="/expertise" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
                     Expertise
                   </NavLink>
+                  <NavLink to="/insights" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+                    Insights
+                  </NavLink>
                   <DeploymentsNavLink />
                   <TeamNavLink />
                 </div>
@@ -88,6 +95,14 @@ export default function App() {
                   <Route path="/deployments/:id" element={<DeploymentDetail />} />
                   <Route path="/expertise" element={<Expertise />} />
                   <Route path="/team" element={<Team />} />
+                  <Route
+                    path="/insights"
+                    element={
+                      <Suspense fallback={<p className="text-muted">Loading…</p>}>
+                        <Insights />
+                      </Suspense>
+                    }
+                  />
                 </Routes>
               </main>
             </>
