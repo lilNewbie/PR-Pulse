@@ -1,4 +1,4 @@
-// US-18: Lead-only Team bottleneck API, mounted via Mallikarjun's PR router.
+// US-18: Lead-only Team bottleneck API, registered directly in app.ts.
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireRole } from '../../middleware/requireRole'
