@@ -1,4 +1,5 @@
 import pool from './pool'
+import { LOAD_CTE } from './openRequests'
 
 export interface WaitingOnRow {
   pr_id: string
@@ -9,14 +10,7 @@ export interface WaitingOnRow {
 
 export async function listWaitingOnRows(userId: number): Promise<WaitingOnRow[]> {
   const { rows } = await pool.query<WaitingOnRow>(
-    `WITH load AS (
-       SELECT rr.reviewer_github_id, COUNT(*)::int AS open_requests
-       FROM review_requests rr
-       JOIN pull_requests p ON p.id = rr.pr_id
-       JOIN repos r ON r.id = p.repo_id AND r.status = 'connected'
-       WHERE p.state = 'open' AND p.is_draft = false
-       GROUP BY rr.reviewer_github_id
-     )
+    `WITH ${LOAD_CTE}
     SELECT
       p.id::text                                                           AS pr_id,
       COALESCE(u2.login, rr.reviewer_github_id::text)                     AS login,
