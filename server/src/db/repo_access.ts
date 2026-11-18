@@ -45,5 +45,5 @@ export async function getUserAccessibleRepos(
      WHERE repo_access.user_id = $1`,
     [userId],
   )
-  return rows.map((r) => ({ id: r.id, fullName: r.full_name }))
+  return rows.map((r) => ({ id: Number(r.id), fullName: r.full_name }))
 }

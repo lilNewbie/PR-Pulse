@@ -1,6 +1,7 @@
 import pool from '../db/pool'
 import { listConnectedRepoIds } from '../db/repos'
 import { syncRepo } from '../sync'
+import { retryUnlinkedDeployments } from '../modules/deployments'
 
 export async function runScheduledSync(): Promise<void> {
   const repoIds = await listConnectedRepoIds()
@@ -18,6 +19,17 @@ export async function runScheduledSync(): Promise<void> {
       )
     }
   }
+
+  // Retry deployments whose PR linking did not complete.
+  // Run once per scheduled cycle, after repository synchronization.
+  try {
+    await retryUnlinkedDeployments()
+  } catch (error) {
+    console.error(
+      '[scheduled-sync] deployment-link retry failed:',
+      error instanceof Error ? error.message : String(error),
+    )
+  }
 }
 
 if (process.argv[1]?.replace(/\\/g, '/').match(/\/jobs\/sync\.(ts|js)$/)) {
@@ -30,5 +42,3 @@ if (process.argv[1]?.replace(/\\/g, '/').match(/\/jobs\/sync\.(ts|js)$/)) {
       await pool.end()
     })
 }
-
-

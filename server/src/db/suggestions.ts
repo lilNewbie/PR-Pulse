@@ -1,4 +1,4 @@
-// Owned by Mandaar. Reviewer suggestions (US-11, design-final 5.2). Reads only.
+// Owned by Mandaar. Reviewer suggestions (US-11 design-final 5.2, US-19 design-extension 4.1). Reads only.
 import pool from './pool'
 import type { PrRow } from './types'
 
@@ -8,16 +8,29 @@ export interface SuggestionRow extends PrRow {
   review_requested: boolean
   path: string
   last_commit_at: Date
+  open_requests: number
 }
 
-// For each changed file of each open, non-draft PR the user can access and didn't author, the suggested
-// reviewer is the most recent committer to that file who is a member of the repo's team with role reviewer
-// or lead, isn't the PR's author and isn't a bot. Non-members and PR Authors are skipped in favour of the
-// next most recent (US-11 AC4, AC5; DR-03). Returns the files where that reviewer is this user.
+// For each changed file of each open, non-draft PR the user can access and didn't author, the eligible touchers
+// are committers to that file who are members of the repo's team with role reviewer or lead, aren't the PR's
+// author and aren't bots (US-11 AC4, AC5; DR-03). Of the 3 most recent distinct eligible touchers, the suggested
+// reviewer is the one with the fewest open requests; ties go to the most recent (US-19, design-extension 4.1).
+// Returns the files where that reviewer is this user.
+//
+// Open requests are counted once for everyone, in the `load` CTE. They span every connected repo, not only the
+// caller's, so every caller sees the same load for a teammate and agrees on who wins each file.
 export async function listSuggestionRows(userId: number): Promise<SuggestionRow[]> {
   const { rows } = await pool.query<SuggestionRow>(
     `WITH me AS (
        SELECT id, github_id FROM users WHERE id = $1
+     ),
+     load AS (
+       SELECT rr.reviewer_github_id, COUNT(*)::int AS open_requests
+       FROM review_requests rr
+       JOIN pull_requests p ON p.id = rr.pr_id
+       JOIN repos r ON r.id = p.repo_id AND r.status = 'connected'
+       WHERE p.state = 'open' AND p.is_draft = false
+       GROUP BY rr.reviewer_github_id
      ),
      candidates AS (
        SELECT p.*, r.owner || '/' || r.name AS repo_full_name, r.team_id
@@ -38,19 +51,27 @@ export async function listSuggestionRows(userId: number): Promise<SuggestionRow[
          WHERE rr.pr_id = c.id AND rr.reviewer_github_id = (SELECT github_id FROM me)
        ) AS review_requested,
        f.path,
-       winner.committed_at AS last_commit_at
+       winner.committed_at AS last_commit_at,
+       winner.open_requests
      FROM candidates c
      JOIN pr_files f ON f.pr_id = c.id
      CROSS JOIN LATERAL (
-       SELECT u.id AS user_id, ft.committed_at
-       FROM file_touches ft
-       JOIN users u ON lower(u.login) = lower(ft.author_login)
-       JOIN members m ON m.user_id = u.id AND m.team_id = c.team_id AND m.role IN ('reviewer', 'lead')
-       WHERE ft.repo_id = c.repo_id
-         AND ft.path = f.path
-         AND ft.author_login NOT LIKE '%[bot]'
-         AND u.github_id <> c.author_github_id
-       ORDER BY ft.committed_at DESC, ft.commit_sha
+       SELECT recent.user_id, recent.committed_at, COALESCE(l.open_requests, 0) AS open_requests
+       FROM (
+         SELECT u.id AS user_id, u.github_id, MAX(ft.committed_at) AS committed_at
+         FROM file_touches ft
+         JOIN users u ON lower(u.login) = lower(ft.author_login)
+         JOIN members m ON m.user_id = u.id AND m.team_id = c.team_id AND m.role IN ('reviewer', 'lead')
+         WHERE ft.repo_id = c.repo_id
+           AND ft.path = f.path
+           AND ft.author_login NOT LIKE '%[bot]'
+           AND u.github_id <> c.author_github_id
+         GROUP BY u.id, u.github_id
+         ORDER BY committed_at DESC, u.id
+         LIMIT 3
+       ) recent
+       LEFT JOIN load l ON l.reviewer_github_id = recent.github_id
+       ORDER BY COALESCE(l.open_requests, 0), recent.committed_at DESC, recent.user_id
        LIMIT 1
      ) winner
      LEFT JOIN users author ON author.github_id = c.author_github_id

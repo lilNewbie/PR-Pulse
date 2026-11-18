@@ -4,6 +4,7 @@ import ReviewQueue from './pages/ReviewQueue'
 import TeamRepos from './pages/TeamRepos'
 import Deployments from './pages/Deployments'
 import DeploymentDetail from './pages/DeploymentDetail'
+import Expertise from './pages/Expertise'
 import SignIn from './pages/SignIn'
 import { useMe } from './hooks/useMe'
 import { apiFetch } from './api/client'
@@ -67,6 +68,9 @@ export default function App() {
                   <NavLink to="/repos" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
                     Team Repos
                   </NavLink>
+                  <NavLink to="/expertise" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+                    Expertise
+                  </NavLink>
                   <DeploymentsNavLink />
                 </div>
                 <NavUser />
@@ -80,6 +84,7 @@ export default function App() {
                   <Route path="/repos" element={<TeamRepos />} />
                   <Route path="/deployments" element={<Deployments />} />
                   <Route path="/deployments/:id" element={<DeploymentDetail />} />
+                  <Route path="/expertise" element={<Expertise />} />
                 </Routes>
               </main>
             </>

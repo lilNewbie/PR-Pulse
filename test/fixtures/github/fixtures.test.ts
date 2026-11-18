@@ -64,6 +64,8 @@ describe('fixture sanitizer', () => {
     )
     expect(fixtureName('issue_comment', { action: 'created', issue: {} })).toBeNull()
     expect(fixtureName('push', { ref: 'refs/heads/main' })).toBe('push.main')
+    expect(fixtureName('deployment_status', { deployment_status: { state: 'success' } })).toBe('deployment_status.success')
+    expect(fixtureName('deployment_status', { deployment_status: {} })).toBeNull()
   })
 })
 

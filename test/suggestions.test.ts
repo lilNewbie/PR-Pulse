@@ -92,25 +92,33 @@ async function suggestionsFor(githubId: number): Promise<SuggestionItem[]> {
   return res.body
 }
 
+// A team of reviewers, PR Authors and a lead, with one repo everyone can see and one nobody can.
+async function setupTeam() {
+  await pool.query(`
+    TRUNCATE TABLE webhook_events, file_touches, pr_files, reviews, review_requests,
+      pull_requests, repo_access, repos, sessions, members, users, teams
+    RESTART IDENTITY CASCADE
+  `)
+  users.clear()
+  const { rows } = await pool.query<{ id: string }>("INSERT INTO teams (name) VALUES ('Suggestions Team') RETURNING id")
+  teamId = Number(rows[0].id)
+  await createUser(ME, 'me', 'reviewer')
+  await createUser(ALICE, 'alice', 'reviewer')
+  await createUser(AUTHOR, 'author', 'pr_author')
+  await createUser(PA, 'pa-user', 'pr_author')
+  await createUser(LEAD, 'lead', 'lead')
+  repoId = await createRepo(8001, 'app')
+  hiddenRepoId = await createRepo(8002, 'hidden')
+  for (const id of [ME, ALICE, AUTHOR, PA, LEAD]) await grantAccess(id, repoId)
+}
+
+// Gives a reviewer n open review requests on PRs with no files (so those PRs are never suggested themselves).
+async function giveLoad(githubId: number, n: number, o: { draft?: boolean; state?: string } = {}) {
+  for (let i = 0; i < n; i++) await requestReview(await createPr([], o), githubId)
+}
+
 describe('US-11 GET /api/suggestions', () => {
-  beforeEach(async () => {
-    await pool.query(`
-      TRUNCATE TABLE webhook_events, file_touches, pr_files, reviews, review_requests,
-        pull_requests, repo_access, repos, sessions, members, users, teams
-      RESTART IDENTITY CASCADE
-    `)
-    users.clear()
-    const { rows } = await pool.query<{ id: string }>("INSERT INTO teams (name) VALUES ('Suggestions Team') RETURNING id")
-    teamId = Number(rows[0].id)
-    await createUser(ME, 'me', 'reviewer')
-    await createUser(ALICE, 'alice', 'reviewer')
-    await createUser(AUTHOR, 'author', 'pr_author')
-    await createUser(PA, 'pa-user', 'pr_author')
-    await createUser(LEAD, 'lead', 'lead')
-    repoId = await createRepo(8001, 'app')
-    hiddenRepoId = await createRepo(8002, 'hidden')
-    for (const id of [ME, ALICE, AUTHOR, PA, LEAD]) await grantAccess(id, repoId)
-  })
+  beforeEach(setupTeam)
 
   it('US-11 AC1: a PR that changes a file I last committed to is suggested, with that file and date', async () => {
     const prId = await createPr(['src/auth/session.ts'])
@@ -238,5 +246,97 @@ describe('US-11 GET /api/suggestions', () => {
     const prId = await createPr(['src/a.ts'])
     await touch('src/a.ts', 'ME', hoursAgo(1))
     expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([prId])
+  })
+})
+
+describe('US-19 load-aware suggestions', () => {
+  const BOB = 3007 // reviewer
+
+  beforeEach(async () => {
+    await setupTeam()
+    await createUser(BOB, 'bob', 'reviewer')
+    await grantAccess(BOB, repoId)
+  })
+
+  it('US-19 AC1: the more recent toucher has 5 open requests and the other has 0, so the one with 0 is suggested', async () => {
+    const prId = await createPr(['src/auth/session.ts'])
+    await touch('src/auth/session.ts', 'alice', hoursAgo(1))
+    await touch('src/auth/session.ts', 'me', hoursAgo(10))
+    await giveLoad(ALICE, 5)
+
+    expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([prId])
+    expect(await suggestionsFor(ALICE)).toEqual([])
+  })
+
+  it('US-19 AC2: with equal load, the more recent toucher is suggested', async () => {
+    const prId = await createPr(['src/a.ts'])
+    await touch('src/a.ts', 'me', hoursAgo(1))
+    await touch('src/a.ts', 'alice', hoursAgo(10))
+    await giveLoad(ME, 2)
+    await giveLoad(ALICE, 2)
+
+    expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([prId])
+    expect(await suggestionsFor(ALICE)).toEqual([])
+  })
+
+  it('US-19 AC3: the reason includes the file, my last commit date and my open review count', async () => {
+    await createPr(['src/a.ts'])
+    const at = hoursAgo(3)
+    await touch('src/a.ts', 'me', at)
+    await giveLoad(ME, 2)
+    // Requests on drafts and closed PRs are not open requests (design-extension 1).
+    await giveLoad(ME, 1, { draft: true })
+    await giveLoad(ME, 1, { state: 'closed' })
+
+    const [item] = await suggestionsFor(ME)
+    expect(item.reasons).toEqual([{ path: 'src/a.ts', lastCommitAt: at.toISOString(), openRequests: 2 }])
+  })
+
+  it('US-19 AC4: the only eligible toucher is suggested regardless of load', async () => {
+    const prId = await createPr(['src/a.ts'])
+    await touch('src/a.ts', 'alice', hoursAgo(1))
+    await giveLoad(ALICE, 5)
+
+    const items = await suggestionsFor(ALICE)
+    expect(items.map((i) => i.id)).toEqual([prId])
+    expect(items[0].reasons[0].openRequests).toBe(5)
+  })
+
+  it('US-19 AC5: a 4th-most-recent toucher with 0 open is not considered', async () => {
+    const prId = await createPr(['src/a.ts'])
+    await touch('src/a.ts', 'alice', hoursAgo(1))
+    await touch('src/a.ts', 'lead', hoursAgo(2))
+    await touch('src/a.ts', 'bob', hoursAgo(3))
+    await touch('src/a.ts', 'me', hoursAgo(10))
+    for (const id of [ALICE, LEAD, BOB]) await giveLoad(id, 1)
+
+    expect(await suggestionsFor(ME)).toEqual([])
+    expect((await suggestionsFor(ALICE)).map((i) => i.id)).toEqual([prId])
+  })
+
+  it('counts the 3 most recent distinct touchers, so repeat commits by one person take one place', async () => {
+    const prId = await createPr(['src/a.ts'])
+    await touch('src/a.ts', 'alice', hoursAgo(1))
+    await touch('src/a.ts', 'alice', hoursAgo(2))
+    await touch('src/a.ts', 'lead', hoursAgo(3))
+    await touch('src/a.ts', 'me', hoursAgo(10))
+    await giveLoad(ALICE, 1)
+    await giveLoad(LEAD, 1)
+
+    expect((await suggestionsFor(ME)).map((i) => i.id)).toEqual([prId])
+  })
+
+  it('picks per file, so I can win one file of a PR while a teammate wins another', async () => {
+    const prId = await createPr(['src/a.ts', 'src/b.ts'])
+    await touch('src/a.ts', 'alice', hoursAgo(1))
+    await touch('src/a.ts', 'me', hoursAgo(5))
+    await touch('src/b.ts', 'alice', hoursAgo(1))
+    await giveLoad(ALICE, 3)
+
+    const [mine] = await suggestionsFor(ME)
+    expect(mine.id).toBe(prId)
+    expect(mine.reasons.map((r) => r.path)).toEqual(['src/a.ts'])
+    const [hers] = await suggestionsFor(ALICE)
+    expect(hers.reasons.map((r) => r.path)).toEqual(['src/b.ts'])
   })
 })

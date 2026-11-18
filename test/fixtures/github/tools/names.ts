@@ -14,6 +14,7 @@ export const WANTED_WEBHOOKS = [
   'pull_request_review.submitted.changes_requested',
   'issue_comment.created',
   'push.main',
+  'deployment_status.success',
 ]
 
 export type Body = { [key: string]: Json }
@@ -38,6 +39,11 @@ export function fixtureName(event: string, body: Body): string | null {
     case 'push': {
       const ref = typeof body.ref === 'string' ? body.ref : ''
       return ref.startsWith('refs/heads/') ? `push.${ref.slice('refs/heads/'.length)}` : null
+    }
+    case 'deployment_status': {
+      // US-12: one fixture per state, e.g. deployment_status.success.
+      const state = obj(body.deployment_status).state
+      return typeof state === 'string' ? `deployment_status.${state}` : null
     }
     default:
       return null
